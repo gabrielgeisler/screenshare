@@ -7,12 +7,11 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="authOverlay" class="overlay">
-    <form id="authForm" class="auth-box">
-      <h2>Digite a senha para continuar</h2>
-      <input type="password" id="authInput" placeholder="Senha" autocomplete="off" required />
-      <button type="submit">Entrar</button>
-      <p id="authError" class="warning hidden">Senha incorreta.</p>
+  <div id="nameOverlay" class="overlay hidden">
+    <form id="nameForm" class="name-box">
+      <h2>Como podemos te chamar?</h2>
+      <input type="text" id="nameInput" placeholder="Seu nome" autocomplete="off" maxlength="30" required />
+      <button type="submit">Continuar</button>
     </form>
   </div>
 
@@ -42,7 +41,10 @@
           <button id="drawerToggle" class="drawer-toggle" aria-label="Abrir controles">☰</button>
           <div class="drawer-panel" id="drawerPanel">
             <button id="fullscreenBtn">Tela cheia</button>
-            <button id="unmuteBtn" class="hidden">Ativar som</button>
+            <div class="volume-control hidden" id="volumeControl">
+              <button type="button" id="volumeIcon" class="volume-icon" aria-label="Mutar/desmutar">🔊</button>
+              <input type="range" id="volumeSlider" min="0" max="100" value="0" />
+            </div>
           </div>
         </div>
       </div>
@@ -50,6 +52,14 @@
 
     <p id="status">Nenhuma tela sendo compartilhada.</p>
   </main>
+
+  <button id="viewersBtn" class="viewers-btn" aria-label="Ver quem está assistindo">
+    👥 <span id="viewersCount">0</span>
+  </button>
+  <div id="viewersPanel" class="viewers-panel hidden">
+    <h3>Assistindo agora</h3>
+    <ul id="viewersList"></ul>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="client.js"></script>
