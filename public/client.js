@@ -224,11 +224,14 @@ socket.on('watcher', async (watcherId) => {
     }
   };
 
-  // Ajuda a diagnosticar espectadores que não conseguem conectar (ex.: falta de TURN)
+  // Ajuda a diagnosticar espectadores que não conseguem conectar (ex.: falta de TURN);
+  // restartIce() aqui não adiantaria, pois é o espectador quem vai pedir uma nova oferta
   pc.oniceconnectionstatechange = () => {
     console.log(`[broadcaster] ICE state com ${watcherId}: ${pc.iceConnectionState}`);
     if (pc.iceConnectionState === 'failed') {
-      pc.restartIce();
+      pc.close();
+      delete peerConnections[watcherId];
+      delete pendingCandidates[watcherId];
     }
   };
 
@@ -286,12 +289,15 @@ socket.on('offer', async (broadcasterId, description) => {
     }
   };
 
-  // Ajuda a diagnosticar espectadores que não conseguem conectar (ex.: falta de TURN)
+  // Quem assiste nunca cria ofertas, então restartIce() aqui não teria efeito nenhum;
+  // a forma que realmente funciona é fechar e pedir uma oferta nova do zero ao broadcaster
   watcherConnection.oniceconnectionstatechange = () => {
     console.log(`[watcher] ICE state: ${watcherConnection.iceConnectionState}`);
     if (watcherConnection.iceConnectionState === 'failed') {
-      statusEl.textContent = 'Falha na conexão. Tentando reconectar...';
-      watcherConnection.restartIce();
+      statusEl.textContent = 'Conexão falhou. Reconectando automaticamente...';
+      watcherConnection.close();
+      watcherConnection = null;
+      socket.emit('watcher');
     }
   };
 
