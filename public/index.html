@@ -3,44 +3,103 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Compartilhamento de Tela</title>
+  <title>ScreenShare Fdç 3000</title>
+
+  <!-- Aplica o tema salvo antes do primeiro paint, evitando flash de tela clara -->
+  <script>
+    const temaSalvo = localStorage.getItem('screenshare_theme');
+    const escuro = temaSalvo ? temaSalvo === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.classList.toggle('dark', escuro);
+  </script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            border: 'hsl(var(--border))',
+            input: 'hsl(var(--input))',
+            ring: 'hsl(var(--ring))',
+            background: 'hsl(var(--background))',
+            foreground: 'hsl(var(--foreground))',
+            primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+            secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+            destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))' },
+            muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+            accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
+            card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+          },
+          borderRadius: {
+            lg: 'var(--radius)',
+            md: 'calc(var(--radius) - 2px)',
+            sm: 'calc(var(--radius) - 4px)',
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Classes de componente no estilo shadcn/ui, processadas pelo Tailwind Play CDN -->
+  <style type="text/tailwindcss">
+    @layer components {
+      .btn {
+        @apply inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors disabled:pointer-events-none disabled:opacity-50 px-4 py-2;
+      }
+      .btn-primary { @apply btn bg-primary text-primary-foreground hover:bg-primary/90; }
+      .btn-outline { @apply btn border border-input bg-background hover:bg-accent hover:text-accent-foreground; }
+      .btn-destructive { @apply btn bg-destructive text-destructive-foreground hover:bg-destructive/90; }
+      .btn-icon { @apply btn h-9 w-9 p-0 shrink-0; }
+      .card { @apply rounded-xl border border-border bg-card text-card-foreground shadow-sm; }
+      .input { @apply flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50; }
+    }
+  </style>
+
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
+<body class="min-h-screen bg-background text-foreground antialiased">
   <div id="nameOverlay" class="overlay hidden">
-    <form id="nameForm" class="name-box">
-      <h2>Como podemos te chamar?</h2>
-      <input type="text" id="nameInput" placeholder="Seu nome" autocomplete="off" maxlength="30" required />
-      <button type="submit">Continuar</button>
+    <form id="nameForm" class="card w-[320px] max-w-[90vw] p-6 space-y-4">
+      <h2 class="text-lg font-semibold">Como podemos te chamar?</h2>
+      <input type="text" id="nameInput" placeholder="Seu nome" autocomplete="off" maxlength="30" required class="input w-full" />
+      <button type="submit" class="btn-primary w-full">Continuar</button>
     </form>
   </div>
 
-  <header>
-    <h1>Compartilhamento de Tela</h1>
-</header>
+  <header class="flex items-center justify-between px-4 py-5 max-w-3xl mx-auto">
+    <h1 class="text-xl font-semibold">ScreenShare Fdç 3000</h1>
+    <button id="themeToggle" class="btn-outline btn-icon" aria-label="Alternar modo escuro">
+      <span id="themeIcon">🌙</span>
+    </button>
+  </header>
 
-  <main>
-    <div class="controls">
-      <label for="qualitySelect" class="quality-label">Qualidade do vídeo:</label>
-      <select id="qualitySelect" disabled>
-        <option value="high">Alta (1080p / 30fps)</option>
-        <option value="medium" selected>Média (720p / 24fps)</option>
-        <option value="low">Baixa (480p / 15fps)</option>
-      </select>
-      <button id="shareBtn" disabled>Compartilhar minha tela</button>
-      <button id="stopBtn" disabled>Parar compartilhamento</button>
-    </div>
+  <main class="mx-auto max-w-3xl px-4 pb-10 space-y-6">
+    <section class="card p-4 sm:p-6">
+      <div class="flex flex-wrap items-center gap-3">
+        <label for="qualitySelect" class="text-sm text-muted-foreground">Qualidade:</label>
+        <select id="qualitySelect" disabled class="input">
+          <option value="high" selected>Alta (1080p / 30fps)</option>
+          <option value="medium">Média (720p / 24fps)</option>
+          <option value="low">Baixa (480p / 15fps)</option>
+        </select>
+        <div class="flex gap-2 sm:ml-auto">
+          <button id="shareBtn" disabled class="btn-primary">Compartilhar minha tela</button>
+          <button id="stopBtn" disabled class="btn-destructive">Parar compartilhamento</button>
+        </div>
+      </div>
+    </section>
 
-    <section class="videos">
-      <div class="video-box hidden" id="localBox">
+    <section class="videos flex flex-wrap justify-center gap-5">
+      <div class="video-box card hidden p-3" id="localBox">
         <video id="localVideo" autoplay muted playsinline></video>
       </div>
-      <div class="video-box hidden" id="remoteBox">
+      <div class="video-box card hidden p-3" id="remoteBox">
         <video id="remoteVideo" autoplay playsinline muted></video>
         <div class="remote-controls" id="remoteControls">
           <button id="drawerToggle" class="drawer-toggle" aria-label="Abrir controles">☰</button>
           <div class="drawer-panel" id="drawerPanel">
-            <button id="fullscreenBtn">Tela cheia</button>
+            <button id="fullscreenBtn" class="btn-outline">Tela cheia</button>
             <div class="volume-control hidden" id="volumeControl">
               <button type="button" id="volumeIcon" class="volume-icon" aria-label="Mutar/desmutar">🔊</button>
               <input type="range" id="volumeSlider" min="0" max="100" value="0" />
@@ -50,14 +109,14 @@
       </div>
     </section>
 
-    <p id="status">Nenhuma tela sendo compartilhada.</p>
+    <p id="status" class="text-center text-sm text-muted-foreground italic">Nenhuma tela sendo compartilhada.</p>
   </main>
 
-  <button id="viewersBtn" class="viewers-btn" aria-label="Ver quem está assistindo">
+  <button id="viewersBtn" class="viewers-btn btn-outline" aria-label="Ver quem está assistindo">
     👥 <span id="viewersCount">0</span>
   </button>
-  <div id="viewersPanel" class="viewers-panel hidden">
-    <h3>Assistindo agora</h3>
+  <div id="viewersPanel" class="viewers-panel card hidden">
+    <h3 class="text-sm font-medium text-muted-foreground mb-2">Assistindo agora</h3>
     <ul id="viewersList"></ul>
   </div>
 

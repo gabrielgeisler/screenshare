@@ -21,6 +21,25 @@ const viewersBtn = document.getElementById('viewersBtn');
 const viewersCount = document.getElementById('viewersCount');
 const viewersPanel = document.getElementById('viewersPanel');
 const viewersList = document.getElementById('viewersList');
+const themeToggle = document.getElementById('themeToggle');
+const themeIcon = document.getElementById('themeIcon');
+
+// ---------- Modo escuro ----------
+
+const THEME_STORAGE_KEY = 'screenshare_theme';
+
+function aplicarTema(escuro) {
+  document.documentElement.classList.toggle('dark', escuro);
+  themeIcon.textContent = escuro ? '☀️' : '🌙';
+}
+
+aplicarTema(document.documentElement.classList.contains('dark'));
+
+themeToggle.addEventListener('click', () => {
+  const escuro = !document.documentElement.classList.contains('dark');
+  aplicarTema(escuro);
+  localStorage.setItem(THEME_STORAGE_KEY, escuro ? 'dark' : 'light');
+});
 
 // TURN é essencial para quem está atrás de NAT/firewall restritivo, onde a
 // conexão P2P direta via STUN falha; carregado do servidor antes de qualquer oferta
@@ -288,9 +307,22 @@ volumeIcon.addEventListener('click', () => {
 });
 
 fullscreenBtn.addEventListener('click', () => {
-  // Coloca a caixa (vídeo + botões) em tela cheia, não só o vídeo, para os controles continuarem visíveis
-  if (remoteBox.requestFullscreen) {
-    remoteBox.requestFullscreen().catch((err) => console.warn('Falha ao entrar em tela cheia:', err));
+  // Deixa só o <video> em tela cheia (não a caixa) para o navegador usar o caminho
+  // acelerado por GPU do vídeo; fullscreen na caixa força composição por software e trava
+  if (remoteVideo.requestFullscreen) {
+    remoteVideo.requestFullscreen().catch((err) => console.warn('Falha ao entrar em tela cheia:', err));
+  }
+});
+
+// Como o vídeo some da tela normal quando é ele o elemento em fullscreen, usamos os
+// controles nativos do navegador (volume, sair da tela cheia) enquanto estiver nesse modo
+document.addEventListener('fullscreenchange', () => {
+  const emTelaCheia = document.fullscreenElement === remoteVideo;
+  remoteVideo.controls = emTelaCheia;
+  if (!emTelaCheia) {
+    // Sincroniza o slider com o volume/mudo que o usuário pode ter ajustado nos controles nativos
+    volumeSlider.value = Math.round(remoteVideo.muted ? 0 : remoteVideo.volume * 100);
+    volumeIcon.textContent = remoteVideo.muted || remoteVideo.volume === 0 ? '🔇' : '🔊';
   }
 });
 
