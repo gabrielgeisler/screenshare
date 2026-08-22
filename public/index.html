@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Compartilhamento de Tela</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="authOverlay" class="overlay">
+    <form id="authForm" class="auth-box">
+      <h2>Digite a senha para continuar</h2>
+      <input type="password" id="authInput" placeholder="Senha" autocomplete="off" required />
+      <button type="submit">Entrar</button>
+      <p id="authError" class="warning hidden">Senha incorreta.</p>
+    </form>
+  </div>
+
+  <header>
+    <h1>Compartilhamento de Tela</h1>
+</header>
+
+  <main>
+    <div class="controls">
+      <label for="qualitySelect" class="quality-label">Qualidade do vídeo:</label>
+      <select id="qualitySelect" disabled>
+        <option value="high">Alta (1080p / 30fps)</option>
+        <option value="medium" selected>Média (720p / 24fps)</option>
+        <option value="low">Baixa (480p / 15fps)</option>
+      </select>
+      <button id="shareBtn" disabled>Compartilhar minha tela</button>
+      <button id="stopBtn" disabled>Parar compartilhamento</button>
+    </div>
+
+    <section class="videos">
+      <div class="video-box hidden" id="localBox">
+        <video id="localVideo" autoplay muted playsinline></video>
+      </div>
+      <div class="video-box hidden" id="remoteBox">
+        <video id="remoteVideo" autoplay playsinline muted></video>
+        <div class="remote-controls" id="remoteControls">
+          <button id="drawerToggle" class="drawer-toggle" aria-label="Abrir controles">☰</button>
+          <div class="drawer-panel" id="drawerPanel">
+            <button id="fullscreenBtn">Tela cheia</button>
+            <button id="unmuteBtn" class="hidden">Ativar som</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <p id="status">Nenhuma tela sendo compartilhada.</p>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
