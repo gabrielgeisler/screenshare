@@ -63,6 +63,31 @@ let watcherConnection = null;
 // Candidates ICE que chegam antes da remoteDescription estar pronta ficam aqui até poderem ser aplicados
 const pendingCandidates = {};
 
+// Prioriza H.264 na negociação: é o único codec com decodificação por hardware praticamente
+// universal, enquanto VP9/AV1 (escolhidos por padrão em alguns navegadores) caem para decodificação
+// por software em várias placas de vídeo — o que trava especialmente ao renderizar em tela cheia
+function preferirCodec(pc, mimePreferido) {
+  if (typeof RTCRtpSender === 'undefined' || !RTCRtpSender.getCapabilities) return;
+  const capacidades = RTCRtpSender.getCapabilities('video');
+  if (!capacidades) return;
+
+  const preferidos = capacidades.codecs.filter((c) => c.mimeType === mimePreferido);
+  if (!preferidos.length) return;
+  const outros = capacidades.codecs.filter((c) => c.mimeType !== mimePreferido);
+  const ordenados = [...preferidos, ...outros];
+
+  pc.getTransceivers().forEach((t) => {
+    const ehVideo = t.sender?.track?.kind === 'video' || t.receiver?.track?.kind === 'video';
+    if (ehVideo && t.setCodecPreferences) {
+      try {
+        t.setCodecPreferences(ordenados);
+      } catch (err) {
+        console.warn('Não foi possível definir preferência de codec:', err);
+      }
+    }
+  });
+}
+
 // Depois que a conexão fecha (conectada/completa), inspeciona o par de candidates escolhido
 // via getStats() para confirmar se o TURN (candidate "relay") foi realmente usado ou não
 async function diagnosticarCandidatoEscolhido(pc, rotulo) {
@@ -87,6 +112,15 @@ async function diagnosticarCandidatoEscolhido(pc, rotulo) {
       `[TURN][${rotulo}] Candidate local=${local?.candidateType} remoto=${remoto?.candidateType} → ` +
       (usaRelay ? 'USANDO TURN (relay) ✅' : 'conexão direta/STUN, sem TURN (não precisou)')
     );
+
+    // Loga o codec de vídeo realmente negociado, pra confirmar se ficou em H.264 (leve, com
+    // decodificação por hardware) ou caiu pra VP8/VP9 (pode pesar bastante em tela cheia)
+    stats.forEach((report) => {
+      if ((report.type === 'inbound-rtp' || report.type === 'outbound-rtp') && report.kind === 'video' && report.codecId) {
+        const codec = stats.get(report.codecId);
+        if (codec) console.log(`[codec][${rotulo}] Vídeo usando: ${codec.mimeType}`);
+      }
+    });
   } catch (err) {
     console.warn(`[TURN][${rotulo}] Falha ao inspecionar candidates:`, err);
   }
@@ -203,10 +237,29 @@ stopBtn.addEventListener('click', stopSharing);
 
 // O áudio de outros apps (fora do navegador) só é capturado pelo Chrome/Edge no Windows,
 // e mesmo assim só ao escolher "Toda a tela" — é limitação do navegador/SO, não do código
+function ehMacOS() {
+  return /Mac OS X/.test(navigator.userAgent) && !/iPhone|iPad/.test(navigator.userAgent);
+}
+
+function nomeDoNavegador() {
+  const ua = navigator.userAgent;
+  if (/Firefox\//.test(ua)) return 'Firefox';
+  if (/Safari\//.test(ua) && !/Chrome|Chromium|CriOS|Edg\//.test(ua)) return 'Safari';
+  return 'chromium';
+}
+
 function mensagemStatusAudio(stream) {
   if (stream.getAudioTracks().length) {
     return 'Você está compartilhando sua tela.';
   }
+
+  // Safari e Firefox no macOS não implementam captura de áudio via getDisplayMedia de jeito
+  // nenhum (nem tela inteira, nem aba) — é limitação do navegador nesse SO, não dá pra contornar
+  const navegador = nomeDoNavegador();
+  if (ehMacOS() && (navegador === 'Safari' || navegador === 'Firefox')) {
+    return `Você está compartilhando sua tela (sem áudio: o ${navegador} no macOS não suporta capturar áudio ao compartilhar tela — use Chrome/Edge/Brave para ter som).`;
+  }
+
   const displaySurface = stream.getVideoTracks()[0]?.getSettings().displaySurface;
   if (displaySurface === 'window') {
     return 'Você está compartilhando sua tela (sem áudio: compartilhar uma janela específica nunca captura som; escolha "Toda a tela" ou uma aba).';
@@ -262,6 +315,7 @@ socket.on('watcher', async (watcherId) => {
   peerConnections[watcherId] = pc;
 
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+  preferirCodec(pc, 'video/H264');
 
   const tiposGerados = new Set();
   const temTurnConfigurado = rtcConfig.iceServers.some((s) => [].concat(s.urls).some((u) => u.startsWith('turn')));
@@ -388,6 +442,7 @@ socket.on('offer', async (broadcasterId, description) => {
   watcherConnection
     .setRemoteDescription(description)
     .then(() => esvaziarCandidatesPendentes(broadcasterId, watcherConnection))
+    .then(() => preferirCodec(watcherConnection, 'video/H264'))
     .then(() => watcherConnection.createAnswer())
     .then((answer) => watcherConnection.setLocalDescription(answer))
     .then(() => socket.emit('answer', broadcasterId, watcherConnection.localDescription))
