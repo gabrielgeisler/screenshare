@@ -37,12 +37,20 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Loga uma vez na subida se o TURN está configurado, pra não precisar adivinhar depois
+if (process.env.TURN_URL) {
+  console.log(`[TURN] Configurado: ${process.env.TURN_URL} (usuário: ${process.env.TURN_USERNAME || '(vazio)'})`);
+} else {
+  console.warn('[TURN] Não configurado (TURN_URL ausente no .env) — espectadores atrás de NAT restritivo podem falhar.');
+}
+
 // Monta a lista de ICE servers dinamicamente; TURN é opcional via .env,
 // mas necessário para quem está atrás de NAT/firewall restritivo (STUN sozinho não basta)
 app.get('/ice-servers', (req, res) => {
   const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+  const temTurn = Boolean(process.env.TURN_URL);
 
-  if (process.env.TURN_URL) {
+  if (temTurn) {
     iceServers.push({
       urls: process.env.TURN_URL,
       username: process.env.TURN_USERNAME,
@@ -50,6 +58,7 @@ app.get('/ice-servers', (req, res) => {
     });
   }
 
+  console.log(`[TURN] /ice-servers pedido por ${req.ip} — TURN ${temTurn ? 'incluído' : 'AUSENTE'}`);
   res.json({ iceServers });
 });
 

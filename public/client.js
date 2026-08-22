@@ -45,6 +45,11 @@ themeToggle.addEventListener('click', () => {
 // conexão P2P direta via STUN falha; carregado do servidor antes de qualquer oferta
 const rtcConfigPromise = fetch('/ice-servers')
   .then((res) => res.json())
+  .then((config) => {
+    const temTurn = config.iceServers.some((s) => [].concat(s.urls).some((u) => u.startsWith('turn')));
+    console.log(temTurn ? '[TURN] Servidor TURN recebido do backend, será tentado se necessário.' : '[TURN] Nenhum TURN configurado no servidor (só STUN) — pode falhar para NAT restritivo.');
+    return config;
+  })
   .catch((err) => {
     console.warn('Não foi possível carregar os ICE servers, usando padrão:', err);
     return { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
@@ -57,6 +62,35 @@ const peerConnections = {};
 let watcherConnection = null;
 // Candidates ICE que chegam antes da remoteDescription estar pronta ficam aqui até poderem ser aplicados
 const pendingCandidates = {};
+
+// Depois que a conexão fecha (conectada/completa), inspeciona o par de candidates escolhido
+// via getStats() para confirmar se o TURN (candidate "relay") foi realmente usado ou não
+async function diagnosticarCandidatoEscolhido(pc, rotulo) {
+  try {
+    const stats = await pc.getStats();
+    let parEscolhido = null;
+    stats.forEach((report) => {
+      if (report.type === 'transport' && report.selectedCandidatePairId) {
+        parEscolhido = stats.get(report.selectedCandidatePairId);
+      } else if (report.type === 'candidate-pair' && report.selected) {
+        parEscolhido = report;
+      }
+    });
+    if (!parEscolhido) {
+      console.log(`[TURN][${rotulo}] Não foi possível identificar o par de candidates ativo.`);
+      return;
+    }
+    const local = stats.get(parEscolhido.localCandidateId);
+    const remoto = stats.get(parEscolhido.remoteCandidateId);
+    const usaRelay = local?.candidateType === 'relay' || remoto?.candidateType === 'relay';
+    console.log(
+      `[TURN][${rotulo}] Candidate local=${local?.candidateType} remoto=${remoto?.candidateType} → ` +
+      (usaRelay ? 'USANDO TURN (relay) ✅' : 'conexão direta/STUN, sem TURN (não precisou)')
+    );
+  } catch (err) {
+    console.warn(`[TURN][${rotulo}] Falha ao inspecionar candidates:`, err);
+  }
+}
 
 function adicionarOuEnfileirarCandidate(id, pc, candidate) {
   if (pc && pc.remoteDescription && pc.remoteDescription.type) {
@@ -229,9 +263,21 @@ socket.on('watcher', async (watcherId) => {
 
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
+  const tiposGerados = new Set();
+  const temTurnConfigurado = rtcConfig.iceServers.some((s) => [].concat(s.urls).some((u) => u.startsWith('turn')));
+
   pc.onicecandidate = (event) => {
     if (event.candidate) {
+      tiposGerados.add(event.candidate.type);
+      console.log(`[TURN][broadcaster→${watcherId}] candidate gerado: ${event.candidate.type}`);
       socket.emit('candidate', watcherId, event.candidate);
+    }
+  };
+
+  pc.onicegatheringstatechange = () => {
+    if (pc.iceGatheringState === 'complete' && temTurnConfigurado && !tiposGerados.has('relay')) {
+      console.warn(`[TURN][broadcaster→${watcherId}] TURN está configurado mas NENHUM candidate relay foi gerado. ` +
+        'Verifique se o TURN_URL/porta estão acessíveis, e se usuário/senha estão corretos.');
     }
   };
 
@@ -239,6 +285,9 @@ socket.on('watcher', async (watcherId) => {
   // restartIce() aqui não adiantaria, pois é o espectador quem vai pedir uma nova oferta
   pc.oniceconnectionstatechange = () => {
     console.log(`[broadcaster] ICE state com ${watcherId}: ${pc.iceConnectionState}`);
+    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+      diagnosticarCandidatoEscolhido(pc, `broadcaster→${watcherId}`);
+    }
     if (pc.iceConnectionState === 'failed') {
       pc.close();
       delete peerConnections[watcherId];
@@ -290,6 +339,9 @@ socket.on('offer', async (broadcasterId, description) => {
 
   watcherConnection = new RTCPeerConnection(rtcConfig);
 
+  const tiposGeradosWatcher = new Set();
+  const temTurnConfiguradoWatcher = rtcConfig.iceServers.some((s) => [].concat(s.urls).some((u) => u.startsWith('turn')));
+
   watcherConnection.ontrack = (event) => {
     remoteVideo.srcObject = event.streams[0];
     remoteBox.classList.remove('hidden');
@@ -305,7 +357,16 @@ socket.on('offer', async (broadcasterId, description) => {
 
   watcherConnection.onicecandidate = (event) => {
     if (event.candidate) {
+      tiposGeradosWatcher.add(event.candidate.type);
+      console.log(`[TURN][watcher] candidate gerado: ${event.candidate.type}`);
       socket.emit('candidate', broadcasterId, event.candidate);
+    }
+  };
+
+  watcherConnection.onicegatheringstatechange = () => {
+    if (watcherConnection.iceGatheringState === 'complete' && temTurnConfiguradoWatcher && !tiposGeradosWatcher.has('relay')) {
+      console.warn('[TURN][watcher] TURN está configurado mas NENHUM candidate relay foi gerado. ' +
+        'Verifique se o TURN_URL/porta estão acessíveis, e se usuário/senha estão corretos.');
     }
   };
 
@@ -313,6 +374,9 @@ socket.on('offer', async (broadcasterId, description) => {
   // a forma que realmente funciona é fechar e pedir uma oferta nova do zero ao broadcaster
   watcherConnection.oniceconnectionstatechange = () => {
     console.log(`[watcher] ICE state: ${watcherConnection.iceConnectionState}`);
+    if (watcherConnection.iceConnectionState === 'connected' || watcherConnection.iceConnectionState === 'completed') {
+      diagnosticarCandidatoEscolhido(watcherConnection, 'watcher');
+    }
     if (watcherConnection.iceConnectionState === 'failed') {
       statusEl.textContent = 'Conexão falhou. Reconectando automaticamente...';
       watcherConnection.close();
