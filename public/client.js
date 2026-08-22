@@ -203,8 +203,15 @@ function stopSharing() {
   statusEl.textContent = 'Compartilhamento encerrado.';
 }
 
+// Conta a tentativa de negociação mais recente por espectador; usado para descartar
+// tentativas antigas que só terminam de "esperar" depois de uma mais nova já ter assumido
+// (evita duas RTCPeerConnection enviando a mesma stream ao mesmo tempo para o mesmo peer)
+const watcherNegotiationSeq = {};
+
 socket.on('watcher', async (watcherId) => {
   if (!localStream) return;
+
+  const minhaSeq = (watcherNegotiationSeq[watcherId] = (watcherNegotiationSeq[watcherId] || 0) + 1);
 
   // Se já existia uma conexão antiga pra esse espectador (ex.: reconexão rápida), fecha antes de recriar
   if (peerConnections[watcherId]) {
@@ -213,6 +220,10 @@ socket.on('watcher', async (watcherId) => {
   }
 
   const rtcConfig = await rtcConfigPromise;
+
+  // Uma tentativa mais nova pode ter chegado enquanto esperávamos os ICE servers; descarta esta
+  if (watcherNegotiationSeq[watcherId] !== minhaSeq) return;
+
   const pc = new RTCPeerConnection(rtcConfig);
   peerConnections[watcherId] = pc;
 
@@ -260,7 +271,12 @@ socket.on('watcher-disconnected', (watcherId) => {
 
 // ---------- Quem assiste a tela (watcher) ----------
 
+// Mesma lógica de descarte de tentativas antigas usada no lado do broadcaster
+let ofertaSeq = 0;
+
 socket.on('offer', async (broadcasterId, description) => {
+  const minhaSeq = ++ofertaSeq;
+
   // Se já havía uma conexão anterior (ex.: nova transmissão começando), fecha antes de recriar
   if (watcherConnection) {
     watcherConnection.close();
@@ -268,6 +284,10 @@ socket.on('offer', async (broadcasterId, description) => {
   }
 
   const rtcConfig = await rtcConfigPromise;
+
+  // Uma oferta mais nova pode ter chegado enquanto esperávamos os ICE servers; descarta esta
+  if (minhaSeq !== ofertaSeq) return;
+
   watcherConnection = new RTCPeerConnection(rtcConfig);
 
   watcherConnection.ontrack = (event) => {
