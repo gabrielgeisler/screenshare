@@ -55,6 +55,25 @@ let localStream = null;
 const peerConnections = {};
 // Conexão usada quando este cliente está assistindo a tela de outra pessoa
 let watcherConnection = null;
+// Candidates ICE que chegam antes da remoteDescription estar pronta ficam aqui até poderem ser aplicados
+const pendingCandidates = {};
+
+function adicionarOuEnfileirarCandidate(id, pc, candidate) {
+  if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+    pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((err) => console.warn('Erro ao adicionar candidate:', err));
+  } else {
+    (pendingCandidates[id] = pendingCandidates[id] || []).push(candidate);
+  }
+}
+
+function esvaziarCandidatesPendentes(id, pc) {
+  const fila = pendingCandidates[id];
+  if (!fila || !fila.length) return;
+  delete pendingCandidates[id];
+  fila.forEach((candidate) => {
+    pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((err) => console.warn('Erro ao adicionar candidate em fila:', err));
+  });
+}
 
 const QUALITY_PRESETS = {
   high: { width: 1920, height: 1080, frameRate: 30 },
@@ -169,7 +188,10 @@ function stopSharing() {
   localVideo.srcObject = null;
 
   Object.values(peerConnections).forEach((pc) => pc.close());
-  for (const id in peerConnections) delete peerConnections[id];
+  for (const id in peerConnections) {
+    delete peerConnections[id];
+    delete pendingCandidates[id];
+  }
 
   // Avisa o servidor para repassar aos espectadores que a transmissão acabou
   socket.emit('stop-broadcast');
@@ -183,6 +205,12 @@ function stopSharing() {
 
 socket.on('watcher', async (watcherId) => {
   if (!localStream) return;
+
+  // Se já existia uma conexão antiga pra esse espectador (ex.: reconexão rápida), fecha antes de recriar
+  if (peerConnections[watcherId]) {
+    peerConnections[watcherId].close();
+    delete peerConnections[watcherId];
+  }
 
   const rtcConfig = await rtcConfigPromise;
   const pc = new RTCPeerConnection(rtcConfig);
@@ -206,12 +234,16 @@ socket.on('watcher', async (watcherId) => {
 
   pc.createOffer()
     .then((offer) => pc.setLocalDescription(offer))
-    .then(() => socket.emit('offer', watcherId, pc.localDescription));
+    .then(() => socket.emit('offer', watcherId, pc.localDescription))
+    .catch((err) => console.error('Erro ao criar oferta para', watcherId, err));
 });
 
 socket.on('answer', (watcherId, description) => {
   const pc = peerConnections[watcherId];
-  if (pc) pc.setRemoteDescription(description);
+  if (!pc) return;
+  pc.setRemoteDescription(description)
+    .then(() => esvaziarCandidatesPendentes(watcherId, pc))
+    .catch((err) => console.error('Erro ao aplicar answer de', watcherId, err));
 });
 
 socket.on('watcher-disconnected', (watcherId) => {
@@ -220,11 +252,18 @@ socket.on('watcher-disconnected', (watcherId) => {
     pc.close();
     delete peerConnections[watcherId];
   }
+  delete pendingCandidates[watcherId];
 });
 
 // ---------- Quem assiste a tela (watcher) ----------
 
 socket.on('offer', async (broadcasterId, description) => {
+  // Se já havía uma conexão anterior (ex.: nova transmissão começando), fecha antes de recriar
+  if (watcherConnection) {
+    watcherConnection.close();
+    watcherConnection = null;
+  }
+
   const rtcConfig = await rtcConfigPromise;
   watcherConnection = new RTCPeerConnection(rtcConfig);
 
@@ -258,14 +297,16 @@ socket.on('offer', async (broadcasterId, description) => {
 
   watcherConnection
     .setRemoteDescription(description)
+    .then(() => esvaziarCandidatesPendentes(broadcasterId, watcherConnection))
     .then(() => watcherConnection.createAnswer())
     .then((answer) => watcherConnection.setLocalDescription(answer))
-    .then(() => socket.emit('answer', broadcasterId, watcherConnection.localDescription));
+    .then(() => socket.emit('answer', broadcasterId, watcherConnection.localDescription))
+    .catch((err) => console.error('Erro ao responder oferta de', broadcasterId, err));
 });
 
 socket.on('candidate', (id, candidate) => {
   const pc = peerConnections[id] || watcherConnection;
-  if (pc) pc.addIceCandidate(new RTCIceCandidate(candidate));
+  adicionarOuEnfileirarCandidate(id, pc, candidate);
 });
 
 socket.on('broadcaster', () => {
@@ -273,6 +314,10 @@ socket.on('broadcaster', () => {
 });
 
 socket.on('broadcaster-disconnected', () => {
+  if (watcherConnection) {
+    watcherConnection.close();
+    watcherConnection = null;
+  }
   remoteVideo.srcObject = null;
   remoteBox.classList.add('hidden');
   volumeControl.classList.add('hidden');
