@@ -1,5 +1,6 @@
 require('dotenv').config();
 const crypto = require('crypto');
+const https = require('https');
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -15,6 +16,15 @@ if (!SENHA) {
   process.exit(1);
 }
 
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
+const DISCORD_START_MESSAGE_TEMPLATE = process.env.DISCORD_START_MESSAGE || '🔴 🎥{nome} inicou uma transmissão! - https://screenshare.gariel.cloud/';
+const DISCORD_NOTIFY_ENABLED = Boolean(DISCORD_BOT_TOKEN && DISCORD_CHANNEL_ID);
+
+if (!DISCORD_NOTIFY_ENABLED) {
+  console.warn('[DISCORD] Notificações desativadas (defina DISCORD_BOT_TOKEN e DISCORD_CHANNEL_ID no .env).');
+}
+
 // Valida o cabeçalho "Authorization: Basic ..." contra a senha do .env;
 // o usuário digita a senha só uma vez porque o navegador reenvia o cabeçalho sozinho
 function checkBasicAuth(header) {
@@ -27,6 +37,88 @@ function checkBasicAuth(header) {
   const recebido = Buffer.from(senhaDigitada);
   if (esperado.length !== recebido.length) return false;
   return crypto.timingSafeEqual(esperado, recebido);
+}
+
+function discordRequest(method, apiPath, body) {
+  return new Promise((resolve, reject) => {
+    if (!DISCORD_NOTIFY_ENABLED) {
+      resolve(null);
+      return;
+    }
+
+    const payload = body ? JSON.stringify(body) : null;
+    const req = https.request(
+      {
+        hostname: 'discord.com',
+        path: `/api/v10${apiPath}`,
+        method,
+        headers: {
+          Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
+          'Content-Type': 'application/json',
+          ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          const ok = res.statusCode >= 200 && res.statusCode < 300;
+          if (!ok) {
+            reject(new Error(`[DISCORD] ${method} ${apiPath} falhou (${res.statusCode}): ${data || 'sem corpo'}`));
+            return;
+          }
+
+          if (!data) {
+            resolve(null);
+            return;
+          }
+
+          try {
+            resolve(JSON.parse(data));
+          } catch {
+            resolve(null);
+          }
+        });
+      }
+    );
+
+    req.on('error', (err) => reject(err));
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+let discordBroadcastMessageId = null;
+
+function montarMensagemInicioDiscord(nomeBroadcaster) {
+  const nome = String(nomeBroadcaster || 'Anônimo');
+  return DISCORD_START_MESSAGE_TEMPLATE.replace('{nome}', nome);
+}
+
+async function enviarAvisoInicioDiscord(nomeBroadcaster) {
+  if (!DISCORD_NOTIFY_ENABLED || discordBroadcastMessageId) return;
+  try {
+    const message = await discordRequest('POST', `/channels/${DISCORD_CHANNEL_ID}/messages`, {
+      content: montarMensagemInicioDiscord(nomeBroadcaster),
+    });
+    discordBroadcastMessageId = message?.id || null;
+  } catch (err) {
+    console.error('[DISCORD] Erro ao enviar aviso de início:', err.message);
+  }
+}
+
+async function apagarAvisoInicioDiscord() {
+  if (!DISCORD_NOTIFY_ENABLED || !discordBroadcastMessageId) return;
+  const messageId = discordBroadcastMessageId;
+  discordBroadcastMessageId = null;
+
+  try {
+    await discordRequest('DELETE', `/channels/${DISCORD_CHANNEL_ID}/messages/${messageId}`);
+  } catch (err) {
+    console.error('[DISCORD] Erro ao apagar aviso de início:', err.message);
+  }
 }
 
 app.use((req, res, next) => {
@@ -102,9 +194,20 @@ io.on('connection', (socket) => {
   // Quem inicia o compartilhamento vira o "broadcaster"
   socket.on('broadcaster', () => {
     if (!socket.data.authenticated) return;
+
+    if (broadcasterId && broadcasterId !== socket.id) {
+      apagarAvisoInicioDiscord();
+    }
+
+    const eraSemTransmissao = !broadcasterId;
+    const nomeBroadcaster = nomesConectados.get(socket.id) || 'Anônimo';
     broadcasterId = socket.id;
     socket.broadcast.emit('broadcaster', broadcasterId);
     notificarEspectadores();
+
+    if (eraSemTransmissao || !discordBroadcastMessageId) {
+      enviarAvisoInicioDiscord(nomeBroadcaster);
+    }
   });
 
   // O broadcaster avisa quando encerra a transmissão sem se desconectar
@@ -114,6 +217,7 @@ io.on('connection', (socket) => {
     broadcasterId = null;
     socket.broadcast.emit('broadcaster-disconnected');
     notificarEspectadores();
+    apagarAvisoInicioDiscord();
   });
 
   // Um espectador avisa que quer assistir
@@ -145,6 +249,7 @@ io.on('connection', (socket) => {
     if (socket.id === broadcasterId) {
       broadcasterId = null;
       socket.broadcast.emit('broadcaster-disconnected');
+      apagarAvisoInicioDiscord();
     } else {
       socket.broadcast.emit('watcher-disconnected', socket.id);
     }
