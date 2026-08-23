@@ -144,9 +144,9 @@ function esvaziarCandidatesPendentes(id, pc) {
 }
 
 const QUALITY_PRESETS = {
-  high: { width: 1920, height: 1080, frameRate: 30 },
-  medium: { width: 1280, height: 720, frameRate: 24 },
-  low: { width: 854, height: 480, frameRate: 15 },
+  high: { width: 1920, height: 1080, frameRate: 60 },
+  medium: { width: 1280, height: 720, frameRate: 30 },
+  low: { width: 854, height: 480, frameRate: 30 },
 };
 
 // ---------- Autenticação ----------
