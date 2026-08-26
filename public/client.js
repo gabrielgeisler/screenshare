@@ -185,7 +185,8 @@ socket.on('viewers-list', (nomes) => {
     : '<li class="empty">Ninguém assistindo</li>';
 });
 
-viewersBtn.addEventListener('click', () => {
+viewersBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
   viewersPanel.classList.toggle('hidden');
 });
 
@@ -516,6 +517,17 @@ document.addEventListener('fullscreenchange', () => {
   }
 });
 
-drawerToggle.addEventListener('click', () => {
+drawerToggle.addEventListener('click', (event) => {
+  event.stopPropagation();
   remoteControls.classList.toggle('open');
+});
+
+// Fecha o drawer e o painel de espectadores ao clicar fora deles
+document.addEventListener('click', (event) => {
+  if (remoteControls.classList.contains('open') && !remoteControls.contains(event.target)) {
+    remoteControls.classList.remove('open');
+  }
+  if (!viewersPanel.classList.contains('hidden') && !viewersPanel.contains(event.target)) {
+    viewersPanel.classList.add('hidden');
+  }
 });
