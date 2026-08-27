@@ -52,6 +52,17 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+header {
+  justify-content: center !important;
+}
+
+#themeToggle {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 900;
+}
+
 .video-box {
   width: 480px;
   max-width: 90vw;
@@ -195,10 +206,11 @@ video:fullscreen {
 
 /* Enquanto assiste, a página toda vira o player: some tudo, exceto o vídeo e seus controles */
 body.watching header,
-body.watching .controls,
-body.watching section.card:not(.video-box),
-body.watching #status,
-body.watching #localBox {
+body.watching #localBox,
+body.watching .broadcast-lobby,
+body.watching .command-bar,
+body.watching .viewers-btn,
+body.watching .viewers-panel {
   display: none;
 }
 
@@ -245,5 +257,166 @@ body.watching .remote-controls {
   display: flex;
   flex-direction: row-reverse;
   align-items: center;
+}
+
+/* Lobby de transmissões */
+.broadcast-lobby {
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.lobby-empty {
+  width: min(420px, 100%);
+  aspect-ratio: 1.85;
+  border: 1px dashed hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.lobby-empty:hover:not(:disabled),
+.lobby-empty:focus-visible:not(:disabled) {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.lobby-empty:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.lobby-empty span {
+  font-size: 44px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.broadcast-list {
+  width: min(620px, 100%);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.broadcast-card {
+  min-height: 116px;
+  padding: 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  cursor: pointer;
+  text-align: left;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.broadcast-card:hover,
+.broadcast-card:focus-visible {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.broadcast-card strong,
+.broadcast-card span {
+  display: block;
+}
+
+.broadcast-thumbnail {
+  display: block;
+  width: 120px;
+  aspect-ratio: 16 / 9;
+  grid-row: span 2;
+  border-radius: calc(var(--radius) - 2px);
+  background: hsl(var(--muted));
+  object-fit: cover;
+}
+
+.broadcast-card strong {
+  font-size: 17px;
+}
+
+.broadcast-card span {
+  margin-top: 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.status {
+  margin: 22px 0 0;
+  font-size: 14px;
+  color: hsl(var(--muted-foreground));
+}
+
+.videos {
+  display: flex;
+  justify-content: center;
+}
+
+.video-box {
+  width: min(720px, 100%);
+  padding: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  overflow: hidden;
+}
+
+.video-box video {
+  display: block;
+  border-radius: 6px;
+}
+
+.preview-label {
+  margin: 0;
+  padding: 9px 12px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.command-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: center;
+  gap: 12px;
+}
+
+.command {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: hsl(var(--muted-foreground));
+}
+
+.quality-command select {
+  min-width: 190px;
+}
+
+@media (max-width: 600px) {
+  .broadcast-lobby { min-height: 280px; }
+  .command-bar { align-items: stretch; }
+  .command { flex: 1 1 100%; }
+  .command button, .quality-command select { width: 100%; }
 }
 

@@ -154,8 +154,8 @@ app.get('/ice-servers', (req, res) => {
   res.json({ iceServers });
 });
 
-// Guarda o id de quem está compartilhando a tela no momento
-let broadcasterId = null;
+// Cada transmissão é vinculada ao socket de quem a iniciou.
+const broadcasters = new Map();
 
 // O handshake do socket.io reenvia o mesmo cabeçalho de Basic Auth do navegador
 io.use((socket, next) => {
@@ -171,7 +171,7 @@ const nomesConectados = new Map();
 
 function listaDeEspectadores() {
   return Array.from(nomesConectados.entries())
-    .filter(([id]) => id !== broadcasterId)
+    .filter(([id]) => !broadcasters.has(id))
     .map(([, nome]) => nome);
 }
 
@@ -179,30 +179,38 @@ function notificarEspectadores() {
   io.emit('viewers-list', listaDeEspectadores());
 }
 
+function notificarTransmissoes() {
+  io.emit('broadcasts-list', Array.from(broadcasters, ([id, transmissao]) => ({ id, ...transmissao })));
+}
+
 io.on('connection', (socket) => {
   nomesConectados.set(socket.id, 'Anônimo');
   notificarEspectadores();
+  socket.emit('broadcasts-list', Array.from(broadcasters, ([id, transmissao]) => ({ id, ...transmissao })));
 
   // Guarda o nome informado pelo usuário na primeira vez que ele entra
   socket.on('identify', (nome) => {
     if (!socket.data.authenticated) return;
     const nomeLimpo = String(nome || '').trim().slice(0, 30);
     nomesConectados.set(socket.id, nomeLimpo || 'Anônimo');
+    if (broadcasters.has(socket.id)) {
+      broadcasters.set(socket.id, {
+        ...broadcasters.get(socket.id),
+        nome: nomesConectados.get(socket.id),
+      });
+      notificarTransmissoes();
+    }
     notificarEspectadores();
   });
 
-  // Quem inicia o compartilhamento vira o "broadcaster"
+  // Quem inicia o compartilhamento entra na lista de broadcasters.
   socket.on('broadcaster', () => {
     if (!socket.data.authenticated) return;
 
-    if (broadcasterId && broadcasterId !== socket.id) {
-      apagarAvisoInicioDiscord();
-    }
-
-    const eraSemTransmissao = !broadcasterId;
+    const eraSemTransmissao = broadcasters.size === 0;
     const nomeBroadcaster = nomesConectados.get(socket.id) || 'Anônimo';
-    broadcasterId = socket.id;
-    socket.broadcast.emit('broadcaster', broadcasterId);
+    broadcasters.set(socket.id, { nome: nomeBroadcaster, thumbnail: null });
+    notificarTransmissoes();
     notificarEspectadores();
 
     if (eraSemTransmissao || !discordBroadcastMessageId) {
@@ -210,20 +218,33 @@ io.on('connection', (socket) => {
     }
   });
 
+  // A miniatura é um frame JPEG reduzido, enviado uma vez pelo emissor ao iniciar.
+  socket.on('broadcast-thumbnail', (thumbnail) => {
+    if (!socket.data.authenticated || !broadcasters.has(socket.id)) return;
+    if (typeof thumbnail !== 'string' || !thumbnail.startsWith('data:image/jpeg;base64,') || thumbnail.length > 50000) return;
+
+    broadcasters.set(socket.id, {
+      ...broadcasters.get(socket.id),
+      thumbnail,
+    });
+    notificarTransmissoes();
+  });
+
   // O broadcaster avisa quando encerra a transmissão sem se desconectar
   // (ex.: clicou em "Parar compartilhamento"), para os espectadores voltarem à tela inicial
   socket.on('stop-broadcast', () => {
-    if (!socket.data.authenticated || socket.id !== broadcasterId) return;
-    broadcasterId = null;
-    socket.broadcast.emit('broadcaster-disconnected');
+    if (!socket.data.authenticated || !broadcasters.has(socket.id)) return;
+    broadcasters.delete(socket.id);
+    io.emit('broadcaster-disconnected', socket.id);
+    notificarTransmissoes();
     notificarEspectadores();
-    apagarAvisoInicioDiscord();
+    if (broadcasters.size === 0) apagarAvisoInicioDiscord();
   });
 
-  // Um espectador avisa que quer assistir
-  socket.on('watcher', () => {
+  // Um espectador escolhe qual transmissão deseja assistir.
+  socket.on('watcher', (broadcasterId) => {
     if (!socket.data.authenticated) return;
-    if (broadcasterId) {
+    if (broadcasters.has(broadcasterId) && broadcasterId !== socket.id) {
       socket.to(broadcasterId).emit('watcher', socket.id);
     }
   });
@@ -246,10 +267,10 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     nomesConectados.delete(socket.id);
-    if (socket.id === broadcasterId) {
-      broadcasterId = null;
-      socket.broadcast.emit('broadcaster-disconnected');
-      apagarAvisoInicioDiscord();
+    if (broadcasters.delete(socket.id)) {
+      io.emit('broadcaster-disconnected', socket.id);
+      notificarTransmissoes();
+      if (broadcasters.size === 0) apagarAvisoInicioDiscord();
     } else {
       socket.broadcast.emit('watcher-disconnected', socket.id);
     }

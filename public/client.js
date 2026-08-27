@@ -21,25 +21,10 @@ const viewersBtn = document.getElementById('viewersBtn');
 const viewersCount = document.getElementById('viewersCount');
 const viewersPanel = document.getElementById('viewersPanel');
 const viewersList = document.getElementById('viewersList');
+const broadcastList = document.getElementById('broadcastList');
+const backToListBtn = document.getElementById('backToListBtn');
 const themeToggle = document.getElementById('themeToggle');
 const themeIcon = document.getElementById('themeIcon');
-
-// ---------- Modo escuro ----------
-
-const THEME_STORAGE_KEY = 'screenshare_theme';
-
-function aplicarTema(escuro) {
-  document.documentElement.classList.toggle('dark', escuro);
-  themeIcon.textContent = escuro ? '☀️' : '🌙';
-}
-
-aplicarTema(document.documentElement.classList.contains('dark'));
-
-themeToggle.addEventListener('click', () => {
-  const escuro = !document.documentElement.classList.contains('dark');
-  aplicarTema(escuro);
-  localStorage.setItem(THEME_STORAGE_KEY, escuro ? 'dark' : 'light');
-});
 
 // TURN é essencial para quem está atrás de NAT/firewall restritivo, onde a
 // conexão P2P direta via STUN falha; carregado do servidor antes de qualquer oferta
@@ -60,6 +45,9 @@ let localStream = null;
 const peerConnections = {};
 // Conexão usada quando este cliente está assistindo a tela de outra pessoa
 let watcherConnection = null;
+let selectedBroadcasterId = null;
+let activeBroadcasts = [];
+let thumbnailTimeout = null;
 // Candidates ICE que chegam antes da remoteDescription estar pronta ficam aqui até poderem ser aplicados
 const pendingCandidates = {};
 
@@ -154,7 +142,20 @@ const QUALITY_PRESETS = {
 // então basta liberar a UI e se anunciar como espectador
 shareBtn.disabled = false;
 qualitySelect.disabled = false;
-socket.emit('watcher');
+
+function atualizarTema() {
+  const escuro = document.documentElement.classList.contains('dark');
+  themeIcon.textContent = escuro ? '☀️' : '🌙';
+  themeToggle.setAttribute('aria-label', escuro ? 'Alternar modo claro' : 'Alternar modo escuro');
+}
+
+themeToggle.addEventListener('click', () => {
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('screenshare_theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+  atualizarTema();
+});
+
+atualizarTema();
 
 // ---------- Nome do usuário (pedido só na primeira vez, guardado no navegador) ----------
 
@@ -196,6 +197,90 @@ function escapeHtml(texto) {
   return div.innerHTML;
 }
 
+// ---------- Transmissões ativas ----------
+
+function renderBroadcasts() {
+  const availableBroadcasts = activeBroadcasts.filter((broadcast) => broadcast.id !== socket.id);
+  broadcastList.innerHTML = '';
+
+  availableBroadcasts.forEach((broadcast) => {
+    const button = document.createElement('button');
+    button.className = 'broadcast-card';
+    button.type = 'button';
+    const preview = document.createElement('img');
+    preview.className = 'broadcast-thumbnail';
+    preview.alt = `Prévia da transmissão de ${broadcast.nome}`;
+    if (broadcast.thumbnail) preview.src = broadcast.thumbnail;
+
+    const name = document.createElement('strong');
+    name.textContent = String(broadcast.nome).toLocaleUpperCase('pt-BR');
+    const action = document.createElement('span');
+    action.textContent = 'Assistir transmissão';
+    button.append(preview, name, action);
+    button.addEventListener('click', () => selectBroadcast(broadcast.id, broadcast.nome));
+    broadcastList.appendChild(button);
+  });
+
+  if (!localStream && !selectedBroadcasterId) {
+    statusEl.textContent = availableBroadcasts.length
+      ? `${availableBroadcasts.length} transmissão${availableBroadcasts.length === 1 ? '' : 'ões'} ativa${availableBroadcasts.length === 1 ? '' : 's'}. Escolha uma para assistir.`
+      : 'Nenhuma transmissão ativa.';
+  }
+}
+
+function selectBroadcast(broadcasterId, broadcasterName) {
+  if (watcherConnection) {
+    watcherConnection.close();
+    watcherConnection = null;
+  }
+  selectedBroadcasterId = broadcasterId;
+  remoteVideo.srcObject = null;
+  statusEl.textContent = `Conectando à transmissão de ${broadcasterName}...`;
+  socket.emit('watcher', broadcasterId);
+}
+
+function returnToBroadcasts() {
+  if (watcherConnection) {
+    watcherConnection.close();
+    watcherConnection = null;
+  }
+  selectedBroadcasterId = null;
+  remoteVideo.srcObject = null;
+  remoteBox.classList.add('hidden');
+  volumeControl.classList.add('hidden');
+  document.body.classList.remove('watching');
+  renderBroadcasts();
+}
+
+socket.on('broadcasts-list', (broadcasts) => {
+  activeBroadcasts = Array.isArray(broadcasts) ? broadcasts : [];
+  renderBroadcasts();
+});
+
+function enviarMiniatura() {
+  if (!localStream || localVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 160;
+  canvas.height = 90;
+  const context = canvas.getContext('2d');
+  context.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
+  socket.emit('broadcast-thumbnail', canvas.toDataURL('image/jpeg', 0.5));
+}
+
+function capturarMiniaturaInicial() {
+  const agendarCaptura = () => {
+    window.clearTimeout(thumbnailTimeout);
+    thumbnailTimeout = window.setTimeout(enviarMiniatura, 1000);
+  };
+
+  if (localVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+    agendarCaptura();
+    return;
+  }
+  localVideo.addEventListener('loadeddata', agendarCaptura, { once: true });
+}
+
 // ---------- Quem compartilha a tela (broadcaster) ----------
 
 shareBtn.addEventListener('click', async () => {
@@ -222,11 +307,13 @@ shareBtn.addEventListener('click', async () => {
     localStream.getVideoTracks()[0].addEventListener('ended', stopSharing);
 
     socket.emit('broadcaster');
+    selectedBroadcasterId = null;
     shareBtn.disabled = true;
     stopBtn.disabled = false;
     qualitySelect.disabled = true;
     localBox.classList.remove('hidden');
     remoteBox.classList.add('hidden');
+    capturarMiniaturaInicial();
     statusEl.textContent = mensagemStatusAudio(localStream);
   } catch (err) {
     console.error('Erro ao capturar a tela:', err);
@@ -271,6 +358,8 @@ function mensagemStatusAudio(stream) {
 function stopSharing() {
   if (!localStream) return;
 
+  window.clearTimeout(thumbnailTimeout);
+  thumbnailTimeout = null;
   localStream.getTracks().forEach((track) => track.stop());
   localStream = null;
   localVideo.srcObject = null;
@@ -288,6 +377,7 @@ function stopSharing() {
   stopBtn.disabled = true;
   qualitySelect.disabled = false;
   localBox.classList.add('hidden');
+  renderBroadcasts();
   statusEl.textContent = 'Compartilhamento encerrado.';
 }
 
@@ -379,6 +469,7 @@ socket.on('watcher-disconnected', (watcherId) => {
 let ofertaSeq = 0;
 
 socket.on('offer', async (broadcasterId, description) => {
+  if (broadcasterId !== selectedBroadcasterId) return;
   const minhaSeq = ++ofertaSeq;
 
   // Se já havía uma conexão anterior (ex.: nova transmissão começando), fecha antes de recriar
@@ -436,7 +527,7 @@ socket.on('offer', async (broadcasterId, description) => {
       statusEl.textContent = 'Conexão falhou. Reconectando automaticamente...';
       watcherConnection.close();
       watcherConnection = null;
-      socket.emit('watcher');
+      if (selectedBroadcasterId) socket.emit('watcher', selectedBroadcasterId);
     }
   };
 
@@ -451,23 +542,13 @@ socket.on('offer', async (broadcasterId, description) => {
 });
 
 socket.on('candidate', (id, candidate) => {
-  const pc = peerConnections[id] || watcherConnection;
+  const pc = peerConnections[id] || (id === selectedBroadcasterId ? watcherConnection : null);
   adicionarOuEnfileirarCandidate(id, pc, candidate);
 });
 
-socket.on('broadcaster', () => {
-  socket.emit('watcher');
-});
-
-socket.on('broadcaster-disconnected', () => {
-  if (watcherConnection) {
-    watcherConnection.close();
-    watcherConnection = null;
-  }
-  remoteVideo.srcObject = null;
-  remoteBox.classList.add('hidden');
-  volumeControl.classList.add('hidden');
-  document.body.classList.remove('watching');
+socket.on('broadcaster-disconnected', (broadcasterId) => {
+  if (broadcasterId !== selectedBroadcasterId) return;
+  returnToBroadcasts();
   statusEl.textContent = 'O compartilhamento de tela foi encerrado.';
 });
 
@@ -504,6 +585,8 @@ fullscreenBtn.addEventListener('click', () => {
     remoteVideo.requestFullscreen().catch((err) => console.warn('Falha ao entrar em tela cheia:', err));
   }
 });
+
+backToListBtn.addEventListener('click', returnToBroadcasts);
 
 // Como o vídeo some da tela normal quando é ele o elemento em fullscreen, usamos os
 // controles nativos do navegador (volume, sair da tela cheia) enquanto estiver nesse modo

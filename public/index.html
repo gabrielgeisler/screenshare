@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ScreenSharenator Fdç 3000</title>
 
-  <!-- Aplica o tema salvo antes do primeiro paint, evitando flash de tela clara -->
   <script>
     const temaSalvo = localStorage.getItem('screenshare_theme');
     const escuro = temaSalvo ? temaSalvo === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -74,31 +73,18 @@
     </button>
   </header>
 
-  <main class="mx-auto max-w-3xl px-4 pb-10 space-y-6">
-    <section class="card p-4 sm:p-6">
-      <div class="flex flex-wrap items-center gap-3">
-        <label for="qualitySelect" class="text-sm text-muted-foreground">Qualidade:</label>
-        <select id="qualitySelect" disabled class="input">
-          <option value="high">Alta (1080p / 60fps)</option>
-          <option value="medium" selected>Média (720p / 60fps)</option>
-          <option value="low">Baixa (480p / 30fps)</option>
-        </select>
-        <div class="flex gap-2 sm:ml-auto">
-          <button id="shareBtn" disabled class="btn-primary">Compartilhar minha tela</button>
-          <button id="stopBtn" disabled class="btn-destructive">Parar compartilhamento</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="videos flex flex-wrap justify-center gap-5">
-      <div class="video-box card hidden p-3" id="localBox">
+  <main class="app-shell mx-auto max-w-3xl px-4 pb-10 space-y-6">
+    <section class="videos">
+      <div class="video-box hidden" id="localBox">
         <video id="localVideo" autoplay muted playsinline></video>
+        <p class="preview-label">Você está transmitindo</p>
       </div>
-      <div class="video-box card hidden p-3" id="remoteBox">
+      <div class="video-box hidden" id="remoteBox">
         <video id="remoteVideo" autoplay playsinline muted></video>
         <div class="remote-controls" id="remoteControls">
           <button id="drawerToggle" class="drawer-toggle" aria-label="Abrir controles">☰</button>
           <div class="drawer-panel" id="drawerPanel">
+            <button id="backToListBtn" class="btn-outline">Transmissões</button>
             <button id="fullscreenBtn" class="btn-outline">Tela cheia</button>
             <div class="volume-control hidden" id="volumeControl">
               <button type="button" id="volumeIcon" class="volume-icon" aria-label="Mutar/desmutar">🔊</button>
@@ -109,7 +95,28 @@
       </div>
     </section>
 
-    <p id="status" class="text-center text-sm text-muted-foreground italic">Nenhuma tela sendo compartilhada.</p>
+    <section class="command-bar" aria-label="Controles da transmissão">
+      <div class="command quality-command">
+        <label for="qualitySelect">Qualidade</label>
+        <select id="qualitySelect" disabled class="input" aria-label="Qualidade da transmissão">
+          <option value="high">Alta (1080p / 60fps)</option>
+          <option value="medium" selected>Média (720p / 60fps)</option>
+          <option value="low">Baixa (480p / 30fps)</option>
+        </select>
+      </div>
+      <div class="command">
+        <span>Parar transmissão</span>
+        <button id="stopBtn" disabled class="btn-destructive" aria-label="Parar transmissão">Parar compartilhamento</button>
+      </div>
+    </section>
+
+    <section id="broadcastLobby" class="broadcast-lobby sm:p-6" aria-live="polite">
+      <button id="shareBtn" class="lobby-empty" type="button" aria-label="Compartilhar minha tela">
+        <span>+</span>
+      </button>
+      <div id="broadcastList" class="broadcast-list"></div>
+      <p id="status" class="status">Nenhuma transmissão ativa.</p>
+    </section>
   </main>
 
   <button id="viewersBtn" class="viewers-btn btn-outline" aria-label="Ver quem está assistindo">
