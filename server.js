@@ -25,6 +25,17 @@ if (!DISCORD_NOTIFY_ENABLED) {
   console.warn('[DISCORD] Notificações desativadas (defina DISCORD_BOT_TOKEN e DISCORD_CHANNEL_ID no .env).');
 }
 
+const SOUND_EFFECT_API_URL = process.env.SOUND_EFFECT_API_URL || 'https://botdisc.zyfdc.dedyn.io:4443';
+const SOUND_EFFECT_API_SECRET = process.env.SOUND_EFFECT_API_SECRET;
+const SOUND_EFFECT_GUILD_ID = process.env.SOUND_EFFECT_GUILD_ID || '256536331180572672';
+const SOUND_EFFECT_START_ID = process.env.SOUND_EFFECT_START_ID || '1542671783533088880';
+const SOUND_EFFECT_STOP_ID = process.env.SOUND_EFFECT_STOP_ID || '1542672264967884901';
+const SOUND_EFFECT_ENABLED = Boolean(SOUND_EFFECT_API_SECRET);
+
+if (!SOUND_EFFECT_ENABLED) {
+  console.warn('[SOUND-EFFECT] Desativado (defina SOUND_EFFECT_API_SECRET no .env).');
+}
+
 // Valida o cabeçalho "Authorization: Basic ..." contra a senha do .env;
 // o usuário digita a senha só uma vez porque o navegador reenvia o cabeçalho sozinho
 function checkBasicAuth(header) {
@@ -88,6 +99,49 @@ function discordRequest(method, apiPath, body) {
     if (payload) req.write(payload);
     req.end();
   });
+}
+
+// O certificado do endpoint é autoassinado, então a verificação é desativada (equivalente ao curl -k)
+function tocarSomEfeito(soundEffectId) {
+  if (!SOUND_EFFECT_ENABLED) {
+    console.warn(`[SOUND-EFFECT] Chamada ignorada (SOUND_EFFECT_API_SECRET não configurado) — efeito ${soundEffectId}`);
+    return;
+  }
+
+  const url = new URL('/sound-effects/play', SOUND_EFFECT_API_URL);
+  url.searchParams.set('guild_id', SOUND_EFFECT_GUILD_ID);
+  url.searchParams.set('sound_effect_id', soundEffectId);
+
+  console.log(`[SOUND-EFFECT] Chamando ${url.toString()}`);
+
+  const req = https.request(
+    {
+      hostname: url.hostname,
+      port: url.port || 4443,
+      path: `${url.pathname}${url.search}`,
+      method: 'POST',
+      rejectUnauthorized: false,
+      headers: {
+        'X-API-Secret': SOUND_EFFECT_API_SECRET,
+      },
+    },
+    (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          console.error(`[SOUND-EFFECT] Falha ao tocar efeito ${soundEffectId} (${res.statusCode}): ${data || 'sem corpo'}`);
+        } else {
+          console.log(`[SOUND-EFFECT] Efeito ${soundEffectId} tocado com sucesso (${res.statusCode})`);
+        }
+      });
+    }
+  );
+
+  req.on('error', (err) => console.error(`[SOUND-EFFECT] Erro ao chamar API para efeito ${soundEffectId}:`, err.message));
+  req.end();
 }
 
 let discordBroadcastMessageId = null;
@@ -168,25 +222,34 @@ io.use((socket, next) => {
 
 // Nome de cada conectado, usado para exibir quem está assistindo a transmissão
 const nomesConectados = new Map();
+const espectadoresPorSocket = new Map();
 
-function listaDeEspectadores() {
-  return Array.from(nomesConectados.entries())
-    .filter(([id]) => !broadcasters.has(id))
-    .map(([, nome]) => nome);
+function listaDeEspectadores(broadcasterId) {
+  return Array.from(espectadoresPorSocket.entries())
+    .filter(([, transmissaoId]) => transmissaoId === broadcasterId)
+    .map(([espectadorId]) => nomesConectados.get(espectadorId) || 'Anônimo');
 }
 
 function notificarEspectadores() {
-  io.emit('viewers-list', listaDeEspectadores());
+  notificarTransmissoes();
 }
 
 function notificarTransmissoes() {
-  io.emit('broadcasts-list', Array.from(broadcasters, ([id, transmissao]) => ({ id, ...transmissao })));
+  io.emit('broadcasts-list', Array.from(broadcasters, ([id, transmissao]) => ({
+    id,
+    ...transmissao,
+    viewers: listaDeEspectadores(id),
+  })));
 }
 
 io.on('connection', (socket) => {
   nomesConectados.set(socket.id, 'Anônimo');
   notificarEspectadores();
-  socket.emit('broadcasts-list', Array.from(broadcasters, ([id, transmissao]) => ({ id, ...transmissao })));
+  socket.emit('broadcasts-list', Array.from(broadcasters, ([id, transmissao]) => ({
+    id,
+    ...transmissao,
+    viewers: listaDeEspectadores(id),
+  })));
 
   // Guarda o nome informado pelo usuário na primeira vez que ele entra
   socket.on('identify', (nome) => {
@@ -209,12 +272,16 @@ io.on('connection', (socket) => {
 
     const eraSemTransmissao = broadcasters.size === 0;
     const nomeBroadcaster = nomesConectados.get(socket.id) || 'Anônimo';
+    espectadoresPorSocket.delete(socket.id);
     broadcasters.set(socket.id, { nome: nomeBroadcaster, thumbnail: null });
     notificarTransmissoes();
     notificarEspectadores();
 
     if (eraSemTransmissao || !discordBroadcastMessageId) {
       enviarAvisoInicioDiscord(nomeBroadcaster);
+    }
+    if (eraSemTransmissao) {
+      tocarSomEfeito(SOUND_EFFECT_START_ID);
     }
   });
 
@@ -235,18 +302,29 @@ io.on('connection', (socket) => {
   socket.on('stop-broadcast', () => {
     if (!socket.data.authenticated || !broadcasters.has(socket.id)) return;
     broadcasters.delete(socket.id);
+    for (const [espectadorId, transmissaoId] of espectadoresPorSocket) {
+      if (transmissaoId === socket.id) espectadoresPorSocket.delete(espectadorId);
+    }
     io.emit('broadcaster-disconnected', socket.id);
     notificarTransmissoes();
     notificarEspectadores();
-    if (broadcasters.size === 0) apagarAvisoInicioDiscord();
+    if (broadcasters.size === 0) {
+      apagarAvisoInicioDiscord();
+      tocarSomEfeito(SOUND_EFFECT_STOP_ID);
+    }
   });
 
   // Um espectador escolhe qual transmissão deseja assistir.
   socket.on('watcher', (broadcasterId) => {
     if (!socket.data.authenticated) return;
     if (broadcasters.has(broadcasterId) && broadcasterId !== socket.id) {
+      espectadoresPorSocket.set(socket.id, broadcasterId);
       socket.to(broadcasterId).emit('watcher', socket.id);
+      notificarTransmissoes();
+      return;
     }
+    espectadoresPorSocket.delete(socket.id);
+    notificarTransmissoes();
   });
 
   // Repassa as mensagens de sinalização WebRTC entre os pares
@@ -267,10 +345,17 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     nomesConectados.delete(socket.id);
+    espectadoresPorSocket.delete(socket.id);
     if (broadcasters.delete(socket.id)) {
+      for (const [espectadorId, transmissaoId] of espectadoresPorSocket) {
+        if (transmissaoId === socket.id) espectadoresPorSocket.delete(espectadorId);
+      }
       io.emit('broadcaster-disconnected', socket.id);
       notificarTransmissoes();
-      if (broadcasters.size === 0) apagarAvisoInicioDiscord();
+      if (broadcasters.size === 0) {
+        apagarAvisoInicioDiscord();
+        tocarSomEfeito(SOUND_EFFECT_STOP_ID);
+      }
     } else {
       socket.broadcast.emit('watcher-disconnected', socket.id);
     }

@@ -208,9 +208,7 @@ video:fullscreen {
 body.watching header,
 body.watching #localBox,
 body.watching .broadcast-lobby,
-body.watching .command-bar,
-body.watching .viewers-btn,
-body.watching .viewers-panel {
+body.watching .command-bar {
   display: none;
 }
 

@@ -179,12 +179,15 @@ nameForm.addEventListener('submit', (event) => {
 
 // ---------- Lista de quem está assistindo ----------
 
-socket.on('viewers-list', (nomes) => {
-  viewersCount.textContent = nomes.length;
-  viewersList.innerHTML = nomes.length
-    ? nomes.map((nome) => `<li>${escapeHtml(nome)}</li>`).join('')
+function atualizarListaEspectadores() {
+  const transmissaoId = selectedBroadcasterId || socket.id;
+  const transmissao = activeBroadcasts.find((broadcast) => broadcast.id === transmissaoId);
+  const espectadores = transmissao?.viewers || [];
+  viewersCount.textContent = espectadores.length;
+  viewersList.innerHTML = espectadores.length
+    ? espectadores.map((nome) => `<li>${escapeHtml(nome)}</li>`).join('')
     : '<li class="empty">Ninguém assistindo</li>';
-});
+}
 
 viewersBtn.addEventListener('click', (event) => {
   event.stopPropagation();
@@ -214,9 +217,11 @@ function renderBroadcasts() {
 
     const name = document.createElement('strong');
     name.textContent = String(broadcast.nome).toLocaleUpperCase('pt-BR');
+    const viewers = document.createElement('span');
+    viewers.textContent = `${broadcast.viewers?.length || 0} assistindo`;
     const action = document.createElement('span');
     action.textContent = 'Assistir transmissão';
-    button.append(preview, name, action);
+    button.append(preview, name, viewers, action);
     button.addEventListener('click', () => selectBroadcast(broadcast.id, broadcast.nome));
     broadcastList.appendChild(button);
   });
@@ -235,6 +240,7 @@ function selectBroadcast(broadcasterId, broadcasterName) {
   }
   selectedBroadcasterId = broadcasterId;
   remoteVideo.srcObject = null;
+  atualizarListaEspectadores();
   statusEl.textContent = `Conectando à transmissão de ${broadcasterName}...`;
   socket.emit('watcher', broadcasterId);
 }
@@ -245,6 +251,8 @@ function returnToBroadcasts() {
     watcherConnection = null;
   }
   selectedBroadcasterId = null;
+  socket.emit('watcher', null);
+  atualizarListaEspectadores();
   remoteVideo.srcObject = null;
   remoteBox.classList.add('hidden');
   volumeControl.classList.add('hidden');
@@ -254,6 +262,7 @@ function returnToBroadcasts() {
 
 socket.on('broadcasts-list', (broadcasts) => {
   activeBroadcasts = Array.isArray(broadcasts) ? broadcasts : [];
+  atualizarListaEspectadores();
   renderBroadcasts();
 });
 
