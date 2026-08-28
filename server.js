@@ -144,29 +144,29 @@ function tocarSomEfeito(soundEffectId) {
   req.end();
 }
 
-let discordBroadcastMessageId = null;
+const discordBroadcastMessageIds = new Map();
 
 function montarMensagemInicioDiscord(nomeBroadcaster) {
   const nome = String(nomeBroadcaster || 'Anônimo');
   return DISCORD_START_MESSAGE_TEMPLATE.replace('{nome}', nome);
 }
 
-async function enviarAvisoInicioDiscord(nomeBroadcaster) {
-  if (!DISCORD_NOTIFY_ENABLED || discordBroadcastMessageId) return;
+async function enviarAvisoInicioDiscord(broadcasterId, nomeBroadcaster) {
+  if (!DISCORD_NOTIFY_ENABLED || discordBroadcastMessageIds.has(broadcasterId)) return;
   try {
     const message = await discordRequest('POST', `/channels/${DISCORD_CHANNEL_ID}/messages`, {
       content: montarMensagemInicioDiscord(nomeBroadcaster),
     });
-    discordBroadcastMessageId = message?.id || null;
+    if (message?.id) discordBroadcastMessageIds.set(broadcasterId, message.id);
   } catch (err) {
     console.error('[DISCORD] Erro ao enviar aviso de início:', err.message);
   }
 }
 
-async function apagarAvisoInicioDiscord() {
-  if (!DISCORD_NOTIFY_ENABLED || !discordBroadcastMessageId) return;
-  const messageId = discordBroadcastMessageId;
-  discordBroadcastMessageId = null;
+async function apagarAvisoInicioDiscord(broadcasterId) {
+  const messageId = discordBroadcastMessageIds.get(broadcasterId);
+  if (!DISCORD_NOTIFY_ENABLED || !messageId) return;
+  discordBroadcastMessageIds.delete(broadcasterId);
 
   try {
     await discordRequest('DELETE', `/channels/${DISCORD_CHANNEL_ID}/messages/${messageId}`);
@@ -270,19 +270,14 @@ io.on('connection', (socket) => {
   socket.on('broadcaster', () => {
     if (!socket.data.authenticated) return;
 
-    const eraSemTransmissao = broadcasters.size === 0;
     const nomeBroadcaster = nomesConectados.get(socket.id) || 'Anônimo';
     espectadoresPorSocket.delete(socket.id);
     broadcasters.set(socket.id, { nome: nomeBroadcaster, thumbnail: null });
     notificarTransmissoes();
     notificarEspectadores();
 
-    if (eraSemTransmissao || !discordBroadcastMessageId) {
-      enviarAvisoInicioDiscord(nomeBroadcaster);
-    }
-    if (eraSemTransmissao) {
-      tocarSomEfeito(SOUND_EFFECT_START_ID);
-    }
+    enviarAvisoInicioDiscord(socket.id, nomeBroadcaster);
+    tocarSomEfeito(SOUND_EFFECT_START_ID);
   });
 
   // A miniatura é um frame JPEG reduzido, enviado uma vez pelo emissor ao iniciar.
@@ -308,10 +303,8 @@ io.on('connection', (socket) => {
     io.emit('broadcaster-disconnected', socket.id);
     notificarTransmissoes();
     notificarEspectadores();
-    if (broadcasters.size === 0) {
-      apagarAvisoInicioDiscord();
-      tocarSomEfeito(SOUND_EFFECT_STOP_ID);
-    }
+    apagarAvisoInicioDiscord(socket.id);
+    tocarSomEfeito(SOUND_EFFECT_STOP_ID);
   });
 
   // Um espectador escolhe qual transmissão deseja assistir.
@@ -352,10 +345,8 @@ io.on('connection', (socket) => {
       }
       io.emit('broadcaster-disconnected', socket.id);
       notificarTransmissoes();
-      if (broadcasters.size === 0) {
-        apagarAvisoInicioDiscord();
-        tocarSomEfeito(SOUND_EFFECT_STOP_ID);
-      }
+      apagarAvisoInicioDiscord(socket.id);
+      tocarSomEfeito(SOUND_EFFECT_STOP_ID);
     } else {
       socket.broadcast.emit('watcher-disconnected', socket.id);
     }
