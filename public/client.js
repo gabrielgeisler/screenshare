@@ -234,9 +234,13 @@ function renderBroadcasts() {
 }
 
 function selectBroadcast(broadcasterId, broadcasterName) {
+  ofertaSeq += 1;
   if (watcherConnection) {
     watcherConnection.close();
     watcherConnection = null;
+  }
+  if (selectedBroadcasterId && selectedBroadcasterId !== broadcasterId) {
+    delete pendingCandidates[selectedBroadcasterId];
   }
   selectedBroadcasterId = broadcasterId;
   remoteVideo.srcObject = null;
@@ -246,10 +250,12 @@ function selectBroadcast(broadcasterId, broadcasterName) {
 }
 
 function returnToBroadcasts() {
+  ofertaSeq += 1;
   if (watcherConnection) {
     watcherConnection.close();
     watcherConnection = null;
   }
+  if (selectedBroadcasterId) delete pendingCandidates[selectedBroadcasterId];
   selectedBroadcasterId = null;
   socket.emit('watcher', null);
   atualizarListaEspectadores();
@@ -421,7 +427,7 @@ socket.on('watcher', async (watcherId) => {
   const temTurnConfigurado = rtcConfig.iceServers.some((s) => [].concat(s.urls).some((u) => u.startsWith('turn')));
 
   pc.onicecandidate = (event) => {
-    if (event.candidate) {
+    if (event.candidate && peerConnections[watcherId] === pc) {
       tiposGerados.add(event.candidate.type);
       console.log(`[TURN][broadcaster→${watcherId}] candidate gerado: ${event.candidate.type}`);
       socket.emit('candidate', watcherId, event.candidate);
@@ -451,7 +457,9 @@ socket.on('watcher', async (watcherId) => {
 
   pc.createOffer()
     .then((offer) => pc.setLocalDescription(offer))
-    .then(() => socket.emit('offer', watcherId, pc.localDescription))
+    .then(() => {
+      if (peerConnections[watcherId] === pc) socket.emit('offer', watcherId, pc.localDescription);
+    })
     .catch((err) => console.error('Erro ao criar oferta para', watcherId, err));
 });
 
@@ -490,14 +498,16 @@ socket.on('offer', async (broadcasterId, description) => {
   const rtcConfig = await rtcConfigPromise;
 
   // Uma oferta mais nova pode ter chegado enquanto esperávamos os ICE servers; descarta esta
-  if (minhaSeq !== ofertaSeq) return;
+  if (minhaSeq !== ofertaSeq || broadcasterId !== selectedBroadcasterId) return;
 
-  watcherConnection = new RTCPeerConnection(rtcConfig);
+  const pc = new RTCPeerConnection(rtcConfig);
+  watcherConnection = pc;
 
   const tiposGeradosWatcher = new Set();
   const temTurnConfiguradoWatcher = rtcConfig.iceServers.some((s) => [].concat(s.urls).some((u) => u.startsWith('turn')));
 
-  watcherConnection.ontrack = (event) => {
+  pc.ontrack = (event) => {
+    if (watcherConnection !== pc) return;
     remoteVideo.srcObject = event.streams[0];
     remoteBox.classList.remove('hidden');
     localBox.classList.add('hidden');
@@ -510,16 +520,16 @@ socket.on('offer', async (broadcasterId, description) => {
     remoteVideo.play().catch((err) => console.warn('Falha ao iniciar o vídeo automaticamente:', err));
   };
 
-  watcherConnection.onicecandidate = (event) => {
-    if (event.candidate) {
+  pc.onicecandidate = (event) => {
+    if (event.candidate && watcherConnection === pc) {
       tiposGeradosWatcher.add(event.candidate.type);
       console.log(`[TURN][watcher] candidate gerado: ${event.candidate.type}`);
       socket.emit('candidate', broadcasterId, event.candidate);
     }
   };
 
-  watcherConnection.onicegatheringstatechange = () => {
-    if (watcherConnection.iceGatheringState === 'complete' && temTurnConfiguradoWatcher && !tiposGeradosWatcher.has('relay')) {
+  pc.onicegatheringstatechange = () => {
+    if (pc.iceGatheringState === 'complete' && temTurnConfiguradoWatcher && !tiposGeradosWatcher.has('relay')) {
       console.warn('[TURN][watcher] TURN está configurado mas NENHUM candidate relay foi gerado. ' +
         'Verifique se o TURN_URL/porta estão acessíveis, e se usuário/senha estão corretos.');
     }
@@ -527,26 +537,31 @@ socket.on('offer', async (broadcasterId, description) => {
 
   // Quem assiste nunca cria ofertas, então restartIce() aqui não teria efeito nenhum;
   // a forma que realmente funciona é fechar e pedir uma oferta nova do zero ao broadcaster
-  watcherConnection.oniceconnectionstatechange = () => {
-    console.log(`[watcher] ICE state: ${watcherConnection.iceConnectionState}`);
-    if (watcherConnection.iceConnectionState === 'connected' || watcherConnection.iceConnectionState === 'completed') {
-      diagnosticarCandidatoEscolhido(watcherConnection, 'watcher');
+  pc.oniceconnectionstatechange = () => {
+    if (watcherConnection !== pc) return;
+    console.log(`[watcher] ICE state: ${pc.iceConnectionState}`);
+    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+      diagnosticarCandidatoEscolhido(pc, 'watcher');
     }
-    if (watcherConnection.iceConnectionState === 'failed') {
+    if (pc.iceConnectionState === 'failed') {
       statusEl.textContent = 'Conexão falhou. Reconectando automaticamente...';
-      watcherConnection.close();
+      pc.close();
       watcherConnection = null;
       if (selectedBroadcasterId) socket.emit('watcher', selectedBroadcasterId);
     }
   };
 
-  watcherConnection
+  pc
     .setRemoteDescription(description)
-    .then(() => esvaziarCandidatesPendentes(broadcasterId, watcherConnection))
-    .then(() => preferirCodec(watcherConnection, 'video/H264'))
-    .then(() => watcherConnection.createAnswer())
-    .then((answer) => watcherConnection.setLocalDescription(answer))
-    .then(() => socket.emit('answer', broadcasterId, watcherConnection.localDescription))
+    .then(() => {
+      if (watcherConnection !== pc) throw new Error('Oferta substituída por uma tentativa mais nova.');
+      esvaziarCandidatesPendentes(broadcasterId, pc);
+      return pc.createAnswer();
+    })
+    .then((answer) => pc.setLocalDescription(answer))
+    .then(() => {
+      if (watcherConnection === pc) socket.emit('answer', broadcasterId, pc.localDescription);
+    })
     .catch((err) => console.error('Erro ao responder oferta de', broadcasterId, err));
 });
 
