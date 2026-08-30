@@ -1,5 +1,4 @@
 require('dotenv').config();
-const crypto = require('crypto');
 const https = require('https');
 const express = require('express');
 const http = require('http');
@@ -9,12 +8,6 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
-
-const SENHA = process.env.SENHA;
-if (!SENHA) {
-  console.error('Defina a variável SENHA no arquivo .env antes de iniciar o servidor.');
-  process.exit(1);
-}
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
@@ -34,20 +27,6 @@ const SOUND_EFFECT_ENABLED = Boolean(SOUND_EFFECT_API_SECRET);
 
 if (!SOUND_EFFECT_ENABLED) {
   console.warn('[SOUND-EFFECT] Desativado (defina SOUND_EFFECT_API_SECRET no .env).');
-}
-
-// Valida o cabeçalho "Authorization: Basic ..." contra a senha do .env;
-// o usuário digita a senha só uma vez porque o navegador reenvia o cabeçalho sozinho
-function checkBasicAuth(header) {
-  if (!header || !header.startsWith('Basic ')) return false;
-
-  const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
-  const senhaDigitada = decoded.slice(decoded.indexOf(':') + 1);
-
-  const esperado = Buffer.from(SENHA);
-  const recebido = Buffer.from(senhaDigitada);
-  if (esperado.length !== recebido.length) return false;
-  return crypto.timingSafeEqual(esperado, recebido);
 }
 
 function discordRequest(method, apiPath, body) {
@@ -175,12 +154,6 @@ async function apagarAvisoInicioDiscord(broadcasterId) {
   }
 }
 
-app.use((req, res, next) => {
-  if (checkBasicAuth(req.headers.authorization)) return next();
-  res.set('WWW-Authenticate', 'Basic realm="Compartilhamento de Tela"');
-  res.status(401).send('Autenticação necessária.');
-});
-
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Loga uma vez na subida se o TURN está configurado, pra não precisar adivinhar depois
@@ -210,15 +183,6 @@ app.get('/ice-servers', (req, res) => {
 
 // Cada transmissão é vinculada ao socket de quem a iniciou.
 const broadcasters = new Map();
-
-// O handshake do socket.io reenvia o mesmo cabeçalho de Basic Auth do navegador
-io.use((socket, next) => {
-  if (checkBasicAuth(socket.handshake.headers.authorization)) {
-    socket.data.authenticated = true;
-    return next();
-  }
-  next(new Error('unauthorized'));
-});
 
 // Nome de cada conectado, usado para exibir quem está assistindo a transmissão
 const nomesConectados = new Map();
@@ -253,7 +217,6 @@ io.on('connection', (socket) => {
 
   // Guarda o nome informado pelo usuário na primeira vez que ele entra
   socket.on('identify', (nome) => {
-    if (!socket.data.authenticated) return;
     const nomeLimpo = String(nome || '').trim().slice(0, 30);
     nomesConectados.set(socket.id, nomeLimpo || 'Anônimo');
     if (broadcasters.has(socket.id)) {
@@ -268,8 +231,6 @@ io.on('connection', (socket) => {
 
   // Quem inicia o compartilhamento entra na lista de broadcasters.
   socket.on('broadcaster', () => {
-    if (!socket.data.authenticated) return;
-
     const nomeBroadcaster = nomesConectados.get(socket.id) || 'Anônimo';
     espectadoresPorSocket.delete(socket.id);
     broadcasters.set(socket.id, { nome: nomeBroadcaster, thumbnail: null });
@@ -282,7 +243,7 @@ io.on('connection', (socket) => {
 
   // A miniatura é um frame JPEG reduzido, enviado uma vez pelo emissor ao iniciar.
   socket.on('broadcast-thumbnail', (thumbnail) => {
-    if (!socket.data.authenticated || !broadcasters.has(socket.id)) return;
+    if (!broadcasters.has(socket.id)) return;
     if (typeof thumbnail !== 'string' || !thumbnail.startsWith('data:image/jpeg;base64,') || thumbnail.length > 50000) return;
 
     broadcasters.set(socket.id, {
@@ -295,7 +256,7 @@ io.on('connection', (socket) => {
   // O broadcaster avisa quando encerra a transmissão sem se desconectar
   // (ex.: clicou em "Parar compartilhamento"), para os espectadores voltarem à tela inicial
   socket.on('stop-broadcast', () => {
-    if (!socket.data.authenticated || !broadcasters.has(socket.id)) return;
+    if (!broadcasters.has(socket.id)) return;
     broadcasters.delete(socket.id);
     for (const [espectadorId, transmissaoId] of espectadoresPorSocket) {
       if (transmissaoId === socket.id) espectadoresPorSocket.delete(espectadorId);
@@ -309,7 +270,6 @@ io.on('connection', (socket) => {
 
   // Um espectador escolhe qual transmissão deseja assistir.
   socket.on('watcher', (broadcasterId) => {
-    if (!socket.data.authenticated) return;
     if (broadcasters.has(broadcasterId) && broadcasterId !== socket.id) {
       espectadoresPorSocket.set(socket.id, broadcasterId);
       socket.to(broadcasterId).emit('watcher', socket.id);
@@ -322,17 +282,14 @@ io.on('connection', (socket) => {
 
   // Repassa as mensagens de sinalização WebRTC entre os pares
   socket.on('offer', (targetId, description) => {
-    if (!socket.data.authenticated) return;
     socket.to(targetId).emit('offer', socket.id, description);
   });
 
   socket.on('answer', (targetId, description) => {
-    if (!socket.data.authenticated) return;
     socket.to(targetId).emit('answer', socket.id, description);
   });
 
   socket.on('candidate', (targetId, candidate) => {
-    if (!socket.data.authenticated) return;
     socket.to(targetId).emit('candidate', socket.id, candidate);
   });
 
