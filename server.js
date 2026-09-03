@@ -154,6 +154,10 @@ async function apagarAvisoInicioDiscord(broadcasterId) {
   }
 }
 
+app.get('/icon.svg', (req, res) => {
+  res.sendFile(path.join(__dirname, 'icon.svg'));
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Loga uma vez na subida se o TURN está configurado, pra não precisar adivinhar depois
