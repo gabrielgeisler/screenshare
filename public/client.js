@@ -132,9 +132,9 @@ function esvaziarCandidatesPendentes(id, pc) {
 }
 
 const QUALITY_PRESETS = {
-  high: { width: 1920, height: 1080, frameRate: 60 },
-  medium: { width: 1280, height: 720, frameRate: 60 },
-  low: { width: 854, height: 480, frameRate: 30 },
+  high: { width: 1920, height: 1080, frameRate: 60, maxBitrate: 8000000 },
+  medium: { width: 1280, height: 720, frameRate: 60, maxBitrate: 5000000 },
+  low: { width: 854, height: 480, frameRate: 30, maxBitrate: 2500000 },
 };
 
 // ---------- Autenticação ----------
@@ -307,7 +307,7 @@ shareBtn.addEventListener('click', async () => {
       video: {
         width: { ideal: preset.width },
         height: { ideal: preset.height },
-        frameRate: { ideal: preset.frameRate },
+        frameRate: { ideal: preset.frameRate, max: preset.frameRate },
       },
       audio: {
         echoCancellation: false,
@@ -318,8 +318,18 @@ shareBtn.addEventListener('click', async () => {
     });
     localVideo.srcObject = localStream;
 
+    // Prioriza fluidez e taxa de quadros (60 FPS) sobre detalhe estático para evitar travamentos em cenas em movimento
+    const videoTrack = localStream.getVideoTracks()[0];
+    if (videoTrack && 'contentHint' in videoTrack) {
+      videoTrack.contentHint = 'motion';
+    }
+    const audioTrack = localStream.getAudioTracks()[0];
+    if (audioTrack && 'contentHint' in audioTrack) {
+      audioTrack.contentHint = 'music';
+    }
+
     // Para automaticamente se o usuário parar pela barra do navegador
-    localStream.getVideoTracks()[0].addEventListener('ended', stopSharing);
+    videoTrack?.addEventListener('ended', stopSharing);
 
     socket.emit('broadcaster');
     selectedBroadcasterId = null;
@@ -423,6 +433,24 @@ socket.on('watcher', async (watcherId) => {
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
   preferirCodec(pc, 'video/H264');
 
+  // Ajusta o bitrate máximo e prioriza manter a taxa de quadros (framerate) sobre a resolução em oscilações de rede
+  const preset = QUALITY_PRESETS[qualitySelect.value] || QUALITY_PRESETS.medium;
+  pc.getSenders().forEach((sender) => {
+    if (sender.track && sender.track.kind === 'video') {
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings || !params.encodings.length) {
+          params.encodings = [{}];
+        }
+        params.encodings[0].maxBitrate = preset.maxBitrate;
+        params.degradationPreference = 'maintain-framerate';
+        sender.setParameters(params).catch((err) => console.warn('Erro ao definir parâmetros do sender:', err));
+      } catch (err) {
+        console.warn('Não foi possível configurar parâmetros de codificação:', err);
+      }
+    }
+  });
+
   const tiposGerados = new Set();
   const temTurnConfigurado = rtcConfig.iceServers.some((s) => [].concat(s.urls).some((u) => u.startsWith('turn')));
 
@@ -508,6 +536,12 @@ socket.on('offer', async (broadcasterId, description) => {
 
   pc.ontrack = (event) => {
     if (watcherConnection !== pc) return;
+
+    // Elimina o buffer de atraso (playout delay) para renderizar quadros recebidos instantaneamente e eliminar micro-travamentos
+    if (event.receiver && 'playoutDelayHint' in event.receiver) {
+      event.receiver.playoutDelayHint = 0;
+    }
+
     remoteVideo.srcObject = event.streams[0];
     remoteBox.classList.remove('hidden');
     localBox.classList.add('hidden');
