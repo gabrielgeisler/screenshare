@@ -14,9 +14,6 @@ const remoteVideo = document.getElementById('remoteVideo');
 const localBox = document.getElementById('localBox');
 const remoteBox = document.getElementById('remoteBox');
 const statusEl = document.getElementById('status');
-const nameOverlay = document.getElementById('nameOverlay');
-const nameForm = document.getElementById('nameForm');
-const nameInput = document.getElementById('nameInput');
 const viewersBtn = document.getElementById('viewersBtn');
 const viewersCount = document.getElementById('viewersCount');
 const viewersPanel = document.getElementById('viewersPanel');
@@ -210,17 +207,8 @@ const nomeSalvo = localStorage.getItem(NAME_STORAGE_KEY);
 if (nomeSalvo) {
   socket.emit('identify', nomeSalvo);
 } else {
-  nameOverlay.classList.remove('hidden');
+  window.location.replace('/welcome.html');
 }
-
-nameForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const nome = nameInput.value.trim();
-  if (!nome) return;
-  localStorage.setItem(NAME_STORAGE_KEY, nome);
-  socket.emit('identify', nome);
-  nameOverlay.classList.add('hidden');
-});
 
 // ---------- Lista de quem está assistindo ----------
 

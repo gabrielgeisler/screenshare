@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MEGA BRAIN</title>
+
+    <script>
+      const temaSalvo = localStorage.getItem('screenshare_theme');
+      const escuro = temaSalvo ? temaSalvo === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.classList.toggle('dark', escuro);
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              border: 'hsl(var(--border))',
+              input: 'hsl(var(--input))',
+              ring: 'hsl(var(--ring))',
+              background: 'hsl(var(--background))',
+              foreground: 'hsl(var(--foreground))',
+              primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+              secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+              destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))' },
+              muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+              accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
+              card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+            },
+            borderRadius: {
+              lg: 'var(--radius)',
+              md: 'calc(var(--radius) - 2px)',
+              sm: 'calc(var(--radius) - 4px)',
+            },
+          },
+        },
+      };
+    </script>
+
+    <style type="text/tailwindcss">
+      @layer components {
+        .btn {
+          @apply inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors disabled:pointer-events-none disabled:opacity-50 px-4 py-2;
+        }
+        .btn-primary { @apply btn bg-primary text-primary-foreground hover:bg-primary/90; }
+        .btn-outline { @apply btn border border-input bg-background hover:bg-accent hover:text-accent-foreground; }
+        .btn-destructive { @apply btn bg-destructive text-destructive-foreground hover:bg-destructive/90; }
+        .btn-icon { @apply btn h-9 w-9 p-0 shrink-0; }
+        .card { @apply rounded-xl border border-border bg-card text-card-foreground shadow-sm; }
+        .input { @apply flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50; }
+      }
+    </style>
+
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="min-h-screen bg-background text-foreground antialiased">
+    <canvas id="matrixCanvas" aria-hidden="true"></canvas>
+
+    <main class="min-h-screen px-4 py-8 flex items-center justify-center">
+      <div class="mx-auto max-w-[420px] w-full">
+        <h1 class="text-[2.5rem] sm:text-[3.25rem] font-semibold leading-none tracking-tight text-center mb-5">MEGA BRAIN</h1>
+
+        <section class="card p-6 sm:p-7" aria-label="Página de identificação do usuário">
+          <h2 class="text-xl font-medium text-center mb-4">Como podemos te chamar?</h2>
+
+          <form id="nameForm" class="space-y-4">
+          <input
+            id="nameInput"
+            type="text"
+            name="displayName"
+            placeholder="Seu nome"
+            autocomplete="off"
+            maxlength="30"
+            required
+            class="input w-full"
+          />
+            <button type="submit" class="btn-primary w-full">Continuar</button>
+          </form>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const NAME_STORAGE_KEY = 'screenshare_displayName';
+      const form = document.getElementById('nameForm');
+      const input = document.getElementById('nameInput');
+
+      const nomeSalvo = localStorage.getItem(NAME_STORAGE_KEY);
+      if (nomeSalvo) {
+        window.location.replace('/');
+      }
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const nome = input.value.trim();
+        if (!nome) return;
+
+        localStorage.setItem(NAME_STORAGE_KEY, nome);
+        window.location.replace('/');
+      });
+
+      const matrixCanvas = document.getElementById('matrixCanvas');
+      if (matrixCanvas && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const contexto = matrixCanvas.getContext('2d');
+        const caracteres = 'アカサタナハマヤラワ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        let colunas = [];
+        let largura = 0;
+        let altura = 0;
+        let frameId;
+
+        function redimensionar() {
+          const escala = window.devicePixelRatio || 1;
+          largura = window.innerWidth;
+          altura = window.innerHeight;
+          matrixCanvas.width = largura * escala;
+          matrixCanvas.height = altura * escala;
+          contexto.setTransform(escala, 0, 0, escala, 0, 0);
+          colunas = Array.from({ length: Math.ceil(largura / 18) }, () => Math.random() * -altura / 18);
+        }
+
+        function desenhar() {
+          contexto.fillStyle = 'rgba(0, 0, 0, 0.08)';
+          contexto.fillRect(0, 0, largura, altura);
+          contexto.font = '14px monospace';
+
+          colunas.forEach((posicao, indice) => {
+            const caractere = caracteres[Math.floor(Math.random() * caracteres.length)];
+            const x = indice * 18;
+            contexto.fillStyle = indice % 7 === 0 ? 'rgba(190, 255, 210, 0.75)' : 'rgba(45, 190, 95, 0.5)';
+            contexto.fillText(caractere, x, posicao * 18);
+            colunas[indice] = posicao > altura / 18 + Math.random() * 20 ? 0 : posicao + 0.28;
+          });
+
+          frameId = requestAnimationFrame(desenhar);
+        }
+
+        redimensionar();
+        window.addEventListener('resize', redimensionar);
+        desenhar();
+        window.addEventListener('pagehide', () => cancelAnimationFrame(frameId), { once: true });
+      }
+    </script>
+  </body>
+</html>
