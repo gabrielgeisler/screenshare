@@ -52,6 +52,22 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+#matrixCanvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #030706;
+  opacity: 0.72;
+  pointer-events: none;
+  z-index: -1;
+}
+
+body > *:not(#matrixCanvas) {
+  position: relative;
+  z-index: 1;
+}
+
 header {
   justify-content: center !important;
 }
@@ -163,18 +179,27 @@ video:fullscreen {
   z-index: 1000;
 }
 
+.viewers-popover {
+  position: static;
+}
+
+body:not(.watching) #viewersBtn,
+body:not(.watching) #viewersPanel {
+  display: none;
+}
+
 .viewers-btn {
   position: fixed;
-  bottom: 16px;
   right: 16px;
+  bottom: 16px;
   border-radius: 9999px;
   z-index: 900;
 }
 
 .viewers-panel {
   position: fixed;
-  bottom: 64px;
   right: 16px;
+  bottom: 68px;
   width: 220px;
   max-height: 300px;
   overflow-y: auto;
@@ -236,6 +261,10 @@ body.watching #remoteBox {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+body.watching #matrixCanvas {
+  display: none;
 }
 
 body.watching #remoteVideo {

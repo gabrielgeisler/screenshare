@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🧠 - MegaBrain</title>
+  <title>MegaBrain</title>
 
   <script>
     const temaSalvo = localStorage.getItem('screenshare_theme');
@@ -58,6 +58,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="min-h-screen bg-background text-foreground antialiased">
+  <canvas id="matrixCanvas" aria-hidden="true"></canvas>
   <div id="nameOverlay" class="overlay hidden">
     <form id="nameForm" class="card w-[320px] max-w-[90vw] p-6 space-y-4">
       <h2 class="text-lg font-semibold">Como podemos te chamar?</h2>
@@ -67,7 +68,7 @@
   </div>
 
   <header class="flex items-center justify-between px-4 py-5 max-w-3xl mx-auto">
-    <h1 class="text-xl font-semibold">MegaBrain 🧠</h1>
+    <h1 class="text-5xl font-semibold">MEGA BRAIN</h1>
     <button id="themeToggle" class="btn-outline btn-icon" aria-label="Alternar modo escuro">
       <span id="themeIcon">🌙</span>
     </button>
@@ -119,12 +120,14 @@
     </section>
   </main>
 
-  <button id="viewersBtn" class="viewers-btn btn-outline" aria-label="Ver quem está assistindo">
-    👥 <span id="viewersCount">0</span>
-  </button>
-  <div id="viewersPanel" class="viewers-panel card hidden">
-    <h3 class="text-sm font-medium text-muted-foreground mb-2">Assistindo agora</h3>
-    <ul id="viewersList"></ul>
+  <div class="viewers-popover">
+    <button id="viewersBtn" class="viewers-btn btn-outline" aria-label="Ver quem está assistindo">
+      👥 <span id="viewersCount">0</span>
+    </button>
+    <div id="viewersPanel" class="viewers-panel card hidden">
+      <h3 class="text-sm font-medium text-muted-foreground mb-2">Assistindo agora</h3>
+      <ul id="viewersList"></ul>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>

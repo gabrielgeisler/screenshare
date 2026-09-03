@@ -25,6 +25,51 @@ const broadcastList = document.getElementById('broadcastList');
 const backToListBtn = document.getElementById('backToListBtn');
 const themeToggle = document.getElementById('themeToggle');
 const themeIcon = document.getElementById('themeIcon');
+const matrixCanvas = document.getElementById('matrixCanvas');
+
+function iniciarMatrix() {
+  if (!matrixCanvas || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const contexto = matrixCanvas.getContext('2d');
+  const caracteres = 'アカサタナハマヤラワ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let colunas = [];
+  let largura = 0;
+  let altura = 0;
+  let frameId;
+
+  function redimensionar() {
+    const escala = window.devicePixelRatio || 1;
+    largura = window.innerWidth;
+    altura = window.innerHeight;
+    matrixCanvas.width = largura * escala;
+    matrixCanvas.height = altura * escala;
+    contexto.setTransform(escala, 0, 0, escala, 0, 0);
+    colunas = Array.from({ length: Math.ceil(largura / 18) }, () => Math.random() * -altura / 18);
+  }
+
+  function desenhar() {
+    contexto.fillStyle = 'rgba(0, 0, 0, 0.08)';
+    contexto.fillRect(0, 0, largura, altura);
+    contexto.font = '14px monospace';
+
+    colunas.forEach((posicao, indice) => {
+      const caractere = caracteres[Math.floor(Math.random() * caracteres.length)];
+      const x = indice * 18;
+      contexto.fillStyle = indice % 7 === 0 ? 'rgba(190, 255, 210, 0.75)' : 'rgba(45, 190, 95, 0.5)';
+      contexto.fillText(caractere, x, posicao * 18);
+      colunas[indice] = posicao > altura / 18 + Math.random() * 20 ? 0 : posicao + 0.28;
+    });
+
+    frameId = requestAnimationFrame(desenhar);
+  }
+
+  redimensionar();
+  window.addEventListener('resize', redimensionar);
+  desenhar();
+  window.addEventListener('pagehide', () => cancelAnimationFrame(frameId), { once: true });
+}
+
+iniciarMatrix();
 
 // TURN é essencial para quem está atrás de NAT/firewall restritivo, onde a
 // conexão P2P direta via STUN falha; carregado do servidor antes de qualquer oferta
@@ -262,6 +307,7 @@ function returnToBroadcasts() {
   remoteVideo.srcObject = null;
   remoteBox.classList.add('hidden');
   volumeControl.classList.add('hidden');
+  viewersPanel.classList.add('hidden');
   document.body.classList.remove('watching');
   renderBroadcasts();
 }
@@ -668,7 +714,7 @@ document.addEventListener('click', (event) => {
   if (remoteControls.classList.contains('open') && !remoteControls.contains(event.target)) {
     remoteControls.classList.remove('open');
   }
-  if (!viewersPanel.classList.contains('hidden') && !viewersPanel.contains(event.target)) {
+  if (!viewersPanel.classList.contains('hidden') && !viewersPanel.contains(event.target) && event.target !== viewersBtn) {
     viewersPanel.classList.add('hidden');
   }
 });
