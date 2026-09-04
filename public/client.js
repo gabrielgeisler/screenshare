@@ -573,7 +573,7 @@ socket.on('offer', async (broadcasterId, description) => {
 
     // Elimina o buffer de atraso (playout delay) para renderizar quadros recebidos instantaneamente e eliminar micro-travamentos
     if (event.receiver && 'playoutDelayHint' in event.receiver) {
-      event.receiver.playoutDelayHint = 0;
+      event.receiver.playoutDelayHint = 0.1;
     }
 
     remoteVideo.srcObject = event.streams[0];
