@@ -478,7 +478,7 @@ socket.on('watcher', async (watcherId) => {
           params.encodings = [{}];
         }
         params.encodings[0].maxBitrate = preset.maxBitrate;
-        params.degradationPreference = 'maintain-framerate';
+        params.degradationPreference = 'balanced';
         sender.setParameters(params).catch((err) => console.warn('Erro ao definir parâmetros do sender:', err));
       } catch (err) {
         console.warn('Não foi possível configurar parâmetros de codificação:', err);
