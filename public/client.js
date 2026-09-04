@@ -174,9 +174,9 @@ function esvaziarCandidatesPendentes(id, pc) {
 }
 
 const QUALITY_PRESETS = {
-  high: { width: 1920, height: 1080, frameRate: 60, maxBitrate: 8000000 },
-  medium: { width: 1280, height: 720, frameRate: 60, maxBitrate: 5000000 },
-  low: { width: 854, height: 480, frameRate: 30, maxBitrate: 2500000 },
+  high: { width: 1920, height: 1080, frameRate: 60, maxBitrate: 6000000 },
+  medium: { width: 1280, height: 720, frameRate: 60, maxBitrate: 3500000 },
+  low: { width: 854, height: 480, frameRate: 30, maxBitrate: 1800000 },
 };
 
 // ---------- Autenticação ----------
@@ -352,7 +352,8 @@ shareBtn.addEventListener('click', async () => {
     });
     localVideo.srcObject = localStream;
 
-    // Prioriza fluidez e taxa de quadros (60 FPS) sobre detalhe estático para evitar travamentos em cenas em movimento
+    // O foco principal desta ferramenta é transmitir vídeos, então manter o movimento fluido
+    // é mais importante que preservar a resolução durante uma oscilação de rede.
     const videoTrack = localStream.getVideoTracks()[0];
     if (videoTrack && 'contentHint' in videoTrack) {
       videoTrack.contentHint = 'motion';
