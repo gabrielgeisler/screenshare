@@ -90,14 +90,6 @@
     </section>
 
     <section class="command-bar" aria-label="Controles da transmissão">
-      <div class="command quality-command">
-        <label for="qualitySelect">Qualidade</label>
-        <select id="qualitySelect" disabled class="input" aria-label="Qualidade da transmissão">
-          <option value="high" selected>Alta (1080p / 60fps)</option>
-          <option value="medium">Média (720p / 60fps)</option>
-          <option value="low">Baixa (480p / 30fps)</option>
-        </select>
-      </div>
       <div class="command">
         <span>Parar transmissão</span>
         <button id="stopBtn" disabled class="btn-destructive" aria-label="Parar transmissão">Parar compartilhamento</button>
@@ -114,6 +106,17 @@
   </main>
 
   <div class="viewers-popover">
+    <button id="qualityBtn" class="quality-btn btn-outline" aria-label="Configurar qualidade" aria-expanded="false">⚙️</button>
+    <div id="qualityPanel" class="quality-panel card hidden">
+      <label class="quality-control" for="viewerQualitySelect">
+        Qualidade
+        <select id="viewerQualitySelect" class="input" aria-label="Qualidade da transmissão">
+          <option value="high" selected>Alta (1080p / 60fps)</option>
+          <option value="medium">Média (720p / 60fps)</option>
+          <option value="low">Baixa (480p / 30fps)</option>
+        </select>
+      </label>
+    </div>
     <button id="viewersBtn" class="viewers-btn btn-outline" aria-label="Ver quem está assistindo">
       👥 <span id="viewersCount">0</span>
     </button>

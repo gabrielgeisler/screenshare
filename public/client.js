@@ -5,7 +5,7 @@ const stopBtn = document.getElementById('stopBtn');
 const volumeControl = document.getElementById('volumeControl');
 const volumeIcon = document.getElementById('volumeIcon');
 const volumeSlider = document.getElementById('volumeSlider');
-const qualitySelect = document.getElementById('qualitySelect');
+const viewerQualitySelect = document.getElementById('viewerQualitySelect');
 const fullscreenBtn = document.getElementById('fullscreenBtn');
 const remoteControls = document.getElementById('remoteControls');
 const drawerToggle = document.getElementById('drawerToggle');
@@ -17,6 +17,8 @@ const statusEl = document.getElementById('status');
 const viewersBtn = document.getElementById('viewersBtn');
 const viewersCount = document.getElementById('viewersCount');
 const viewersPanel = document.getElementById('viewersPanel');
+const qualityBtn = document.getElementById('qualityBtn');
+const qualityPanel = document.getElementById('qualityPanel');
 const viewersList = document.getElementById('viewersList');
 const broadcastList = document.getElementById('broadcastList');
 const backToListBtn = document.getElementById('backToListBtn');
@@ -174,16 +176,15 @@ function esvaziarCandidatesPendentes(id, pc) {
 }
 
 const QUALITY_PRESETS = {
-  high: { width: 1920, height: 1080, frameRate: 60, maxBitrate: 6000000 },
-  medium: { width: 1280, height: 720, frameRate: 60, maxBitrate: 3500000 },
-  low: { width: 854, height: 480, frameRate: 30, maxBitrate: 1800000 },
+  high: { maxBitrate: 6000000, scaleResolutionDownBy: 1, maxFramerate: 60 },
+  medium: { maxBitrate: 3500000, scaleResolutionDownBy: 1.5, maxFramerate: 60 },
+  low: { maxBitrate: 1800000, scaleResolutionDownBy: 2.25, maxFramerate: 30 },
 };
 
 // ---------- Autenticação ----------
 // A senha já foi validada via HTTP Basic Auth antes de a página carregar,
 // então basta liberar a UI e se anunciar como espectador
 shareBtn.disabled = false;
-qualitySelect.disabled = false;
 
 function atualizarTema() {
   const escuro = document.documentElement.classList.contains('dark');
@@ -225,6 +226,15 @@ function atualizarListaEspectadores() {
 viewersBtn.addEventListener('click', (event) => {
   event.stopPropagation();
   viewersPanel.classList.toggle('hidden');
+  qualityPanel.classList.add('hidden');
+  qualityBtn.setAttribute('aria-expanded', 'false');
+});
+
+qualityBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  const fechado = qualityPanel.classList.toggle('hidden');
+  qualityBtn.setAttribute('aria-expanded', String(!fechado));
+  viewersPanel.classList.add('hidden');
 });
 
 function escapeHtml(texto) {
@@ -296,6 +306,8 @@ function returnToBroadcasts() {
   remoteBox.classList.add('hidden');
   volumeControl.classList.add('hidden');
   viewersPanel.classList.add('hidden');
+  qualityPanel.classList.add('hidden');
+  qualityBtn.setAttribute('aria-expanded', 'false');
   document.body.classList.remove('watching');
   renderBroadcasts();
 }
@@ -334,14 +346,13 @@ function capturarMiniaturaInicial() {
 
 shareBtn.addEventListener('click', async () => {
   try {
-    const preset = QUALITY_PRESETS[qualitySelect.value] || QUALITY_PRESETS.medium;
     // systemAudio: 'include' pede ao Chrome pra já vir com "Compartilhar áudio" marcado;
     // só funciona ao escolher "Toda a tela" ou uma aba — janelas específicas não suportam áudio
     localStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
-        width: { ideal: preset.width },
-        height: { ideal: preset.height },
-        frameRate: { ideal: preset.frameRate, max: preset.frameRate },
+        width: { ideal: 1920, max: 1920 },
+        height: { ideal: 1080, max: 1080 },
+        frameRate: { ideal: 60, max: 60 },
       },
       audio: {
         echoCancellation: false,
@@ -370,7 +381,6 @@ shareBtn.addEventListener('click', async () => {
     selectedBroadcasterId = null;
     shareBtn.disabled = true;
     stopBtn.disabled = false;
-    qualitySelect.disabled = true;
     localBox.classList.remove('hidden');
     remoteBox.classList.add('hidden');
     capturarMiniaturaInicial();
@@ -435,7 +445,6 @@ function stopSharing() {
 
   shareBtn.disabled = false;
   stopBtn.disabled = true;
-  qualitySelect.disabled = false;
   localBox.classList.add('hidden');
   renderBroadcasts();
   statusEl.textContent = 'Compartilhamento encerrado.';
@@ -468,8 +477,7 @@ socket.on('watcher', async (watcherId) => {
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
   preferirCodec(pc, 'video/H264');
 
-  // Ajusta o bitrate máximo e prioriza manter a taxa de quadros (framerate) sobre a resolução em oscilações de rede
-  const preset = QUALITY_PRESETS[qualitySelect.value] || QUALITY_PRESETS.medium;
+  // Começa no teto; cada espectador pode reduzir sua própria resolução e bitrate depois
   pc.getSenders().forEach((sender) => {
     if (sender.track && sender.track.kind === 'video') {
       try {
@@ -477,7 +485,9 @@ socket.on('watcher', async (watcherId) => {
         if (!params.encodings || !params.encodings.length) {
           params.encodings = [{}];
         }
-        params.encodings[0].maxBitrate = preset.maxBitrate;
+        params.encodings[0].maxBitrate = QUALITY_PRESETS.high.maxBitrate;
+        params.encodings[0].scaleResolutionDownBy = QUALITY_PRESETS.high.scaleResolutionDownBy;
+        params.encodings[0].maxFramerate = QUALITY_PRESETS.high.maxFramerate;
         params.degradationPreference = 'balanced';
         sender.setParameters(params).catch((err) => console.warn('Erro ao definir parâmetros do sender:', err));
       } catch (err) {
@@ -526,6 +536,26 @@ socket.on('watcher', async (watcherId) => {
     .catch((err) => console.error('Erro ao criar oferta para', watcherId, err));
 });
 
+function aplicarQualidadeNoSender(sender, preset) {
+  const params = sender.getParameters();
+  if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+  params.encodings[0].maxBitrate = preset.maxBitrate;
+  params.encodings[0].scaleResolutionDownBy = preset.scaleResolutionDownBy;
+  params.encodings[0].maxFramerate = preset.maxFramerate;
+  return sender.setParameters(params);
+}
+
+socket.on('quality-request', (watcherId, quality) => {
+  const pc = peerConnections[watcherId];
+  const preset = QUALITY_PRESETS[quality];
+  if (!pc || !preset) return;
+
+  pc.getSenders()
+    .filter((sender) => sender.track?.kind === 'video')
+    .forEach((sender) => aplicarQualidadeNoSender(sender, preset)
+      .catch((err) => console.warn('Erro ao aplicar qualidade solicitada pelo espectador:', err)));
+});
+
 socket.on('answer', (watcherId, description) => {
   const pc = peerConnections[watcherId];
   if (!pc) return;
@@ -565,6 +595,8 @@ socket.on('offer', async (broadcasterId, description) => {
 
   const pc = new RTCPeerConnection(rtcConfig);
   watcherConnection = pc;
+
+  socket.emit('quality-request', broadcasterId, viewerQualitySelect.value);
 
   const tiposGeradosWatcher = new Set();
   const temTurnConfiguradoWatcher = rtcConfig.iceServers.some((s) => [].concat(s.urls).some((u) => u.startsWith('turn')));
@@ -632,6 +664,12 @@ socket.on('offer', async (broadcasterId, description) => {
       if (watcherConnection === pc) socket.emit('answer', broadcasterId, pc.localDescription);
     })
     .catch((err) => console.error('Erro ao responder oferta de', broadcasterId, err));
+});
+
+viewerQualitySelect.addEventListener('change', () => {
+  if (selectedBroadcasterId) {
+    socket.emit('quality-request', selectedBroadcasterId, viewerQualitySelect.value);
+  }
 });
 
 socket.on('candidate', (id, candidate) => {
@@ -705,5 +743,9 @@ document.addEventListener('click', (event) => {
   }
   if (!viewersPanel.classList.contains('hidden') && !viewersPanel.contains(event.target) && event.target !== viewersBtn) {
     viewersPanel.classList.add('hidden');
+  }
+  if (!qualityPanel.classList.contains('hidden') && !qualityPanel.contains(event.target) && event.target !== qualityBtn) {
+    qualityPanel.classList.add('hidden');
+    qualityBtn.setAttribute('aria-expanded', 'false');
   }
 });

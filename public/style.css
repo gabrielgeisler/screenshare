@@ -197,8 +197,21 @@ body.modal-open {
 }
 
 body:not(.watching) #viewersBtn,
-body:not(.watching) #viewersPanel {
+body:not(.watching) #viewersPanel,
+body:not(.watching) #qualityBtn,
+body:not(.watching) #qualityPanel {
   display: none;
+}
+
+.quality-btn {
+  position: fixed;
+  right: 92px;
+  bottom: 16px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 9999px;
+  z-index: 900;
 }
 
 .viewers-btn {
@@ -207,6 +220,29 @@ body:not(.watching) #viewersPanel {
   bottom: 16px;
   border-radius: 9999px;
   z-index: 900;
+}
+
+.quality-panel {
+  position: fixed;
+  right: 102px;
+  bottom: 68px;
+  width: 220px;
+  padding: 12px 16px;
+  text-align: left;
+  z-index: 900;
+}
+
+.quality-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: hsl(var(--foreground));
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.quality-control select {
+  min-width: 188px;
 }
 
 .viewers-panel {
@@ -451,14 +487,10 @@ body.watching .remote-controls {
   color: hsl(var(--muted-foreground));
 }
 
-.quality-command select {
-  min-width: 190px;
-}
-
 @media (max-width: 600px) {
   .broadcast-lobby { min-height: 280px; }
   .command-bar { align-items: stretch; }
   .command { flex: 1 1 100%; }
-  .command button, .quality-command select { width: 100%; }
+  .command button { width: 100%; }
 }
 

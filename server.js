@@ -297,6 +297,12 @@ io.on('connection', (socket) => {
     socket.to(targetId).emit('candidate', socket.id, candidate);
   });
 
+  socket.on('quality-request', (broadcasterId, quality) => {
+    if (espectadoresPorSocket.get(socket.id) !== broadcasterId) return;
+    if (!['high', 'medium', 'low'].includes(quality)) return;
+    socket.to(broadcasterId).emit('quality-request', socket.id, quality);
+  });
+
   socket.on('disconnect', () => {
     nomesConectados.delete(socket.id);
     espectadoresPorSocket.delete(socket.id);
