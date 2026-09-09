@@ -149,11 +149,13 @@ body.controls-hidden #remoteVideo {
   line-height: 1;
   border-radius: 9999px;
   z-index: 900;
-  display: none;
+  /* !important necessário: o Tailwind CDN injeta seu CSS depois deste arquivo,
+     então "inline-flex" da classe .btn (mesma especificidade) venceria o cascade */
+  display: none !important;
 }
 
 body.watching .fullscreen-btn {
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
   justify-content: center;
 }
