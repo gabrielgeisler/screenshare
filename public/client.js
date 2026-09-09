@@ -8,7 +8,6 @@ const volumeSlider = document.getElementById('volumeSlider');
 const viewerQualitySelect = document.getElementById('viewerQualitySelect');
 const fullscreenBtn = document.getElementById('fullscreenBtn');
 const remoteControls = document.getElementById('remoteControls');
-const drawerToggle = document.getElementById('drawerToggle');
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
 const localBox = document.getElementById('localBox');
@@ -213,6 +212,8 @@ if (nomeSalvo) {
 
 // ---------- Lista de quem está assistindo ----------
 
+const broadcasterViewers = document.getElementById('broadcasterViewers');
+
 function atualizarListaEspectadores() {
   const transmissaoId = selectedBroadcasterId || socket.id;
   const transmissao = activeBroadcasts.find((broadcast) => broadcast.id === transmissaoId);
@@ -221,6 +222,16 @@ function atualizarListaEspectadores() {
   viewersList.innerHTML = espectadores.length
     ? espectadores.map((nome) => `<li>${escapeHtml(nome)}</li>`).join('')
     : '<li class="empty">Ninguém assistindo</li>';
+
+  // Quando este cliente é o broadcaster, mostra os nomes acima do botão de parar
+  if (localStream) {
+    broadcasterViewers.textContent = espectadores.length
+      ? `👥 Assistindo agora: ${espectadores.join(', ')}`
+      : '👥 Ninguém assistindo';
+    broadcasterViewers.classList.remove('hidden');
+  } else {
+    broadcasterViewers.classList.add('hidden');
+  }
 }
 
 viewersBtn.addEventListener('click', (event) => {
@@ -305,10 +316,13 @@ function returnToBroadcasts() {
   remoteVideo.srcObject = null;
   remoteBox.classList.add('hidden');
   volumeControl.classList.add('hidden');
+  volumeControl.classList.remove('slider-open');
   viewersPanel.classList.add('hidden');
   qualityPanel.classList.add('hidden');
   qualityBtn.setAttribute('aria-expanded', 'false');
   document.body.classList.remove('watching');
+  document.body.classList.remove('controls-hidden');
+  window.clearTimeout(hideControlsTimeout);
   renderBroadcasts();
 }
 
@@ -617,6 +631,13 @@ socket.on('offer', async (broadcasterId, description) => {
     // Sempre exibe o controle de volume; áudio/vídeo podem chegar em eventos separados,
     // então não dá para confiar em getAudioTracks() no primeiro disparo do ontrack
     volumeControl.classList.remove('hidden');
+    // Garante que o volume comece em 100% e sem mudo ao entrar na transmissão
+    remoteVideo.muted = false;
+    remoteVideo.volume = 1;
+    volumeSlider.value = 100;
+    volumeIcon.textContent = '🔊';
+    // Inicia o ciclo de auto-ocultar dos controles
+    showControls();
     // Alguns navegadores (ex.: aba anônima) bloqueiam o autoplay; força o play manualmente
     remoteVideo.play().catch((err) => console.warn('Falha ao iniciar o vídeo automaticamente:', err));
   };
@@ -666,6 +687,29 @@ socket.on('offer', async (broadcasterId, description) => {
     .catch((err) => console.error('Erro ao responder oferta de', broadcasterId, err));
 });
 
+// ---------- Auto-ocultar controles ao assistir ----------
+// Esconde os botões depois de alguns segundos sem interação; reaparecem ao mover o mouse/tocar na tela
+const CONTROLS_HIDE_DELAY = 3000;
+let hideControlsTimeout = null;
+
+function scheduleHideControls() {
+  if (!document.body.classList.contains('watching')) return;
+  window.clearTimeout(hideControlsTimeout);
+  hideControlsTimeout = window.setTimeout(() => {
+    document.body.classList.add('controls-hidden');
+  }, CONTROLS_HIDE_DELAY);
+}
+
+function showControls() {
+  if (!document.body.classList.contains('watching')) return;
+  document.body.classList.remove('controls-hidden');
+  scheduleHideControls();
+}
+
+['mousemove', 'mousedown', 'touchstart', 'touchmove', 'keydown'].forEach((evt) => {
+  document.addEventListener(evt, showControls, { passive: true });
+});
+
 viewerQualitySelect.addEventListener('change', () => {
   if (selectedBroadcasterId) {
     socket.emit('quality-request', selectedBroadcasterId, viewerQualitySelect.value);
@@ -694,19 +738,11 @@ volumeSlider.addEventListener('input', () => {
 // Guarda o último volume não-zero para restaurar ao desmutar pelo ícone
 let lastVolume = Number(volumeSlider.value) || 50;
 
-volumeIcon.addEventListener('click', () => {
-  if (remoteVideo.muted || Number(volumeSlider.value) === 0) {
-    remoteVideo.muted = false;
-    remoteVideo.volume = lastVolume / 100;
-    volumeSlider.value = lastVolume;
-    volumeIcon.textContent = '🔊';
-    remoteVideo.play().catch((err) => console.warn('Falha ao ativar o som:', err));
-  } else {
-    lastVolume = Number(volumeSlider.value) || lastVolume;
-    remoteVideo.muted = true;
-    volumeSlider.value = 0;
-    volumeIcon.textContent = '🔇';
-  }
+volumeIcon.addEventListener('click', (event) => {
+  event.stopPropagation();
+  // O clique no ícone apenas abre/fecha o slider; mutar/desmutar é feito pelo
+  // próprio slider (0 = mudo) ou pelos controles nativos em tela cheia
+  volumeControl.classList.toggle('slider-open');
 });
 
 fullscreenBtn.addEventListener('click', () => {
@@ -731,21 +767,16 @@ document.addEventListener('fullscreenchange', () => {
   }
 });
 
-drawerToggle.addEventListener('click', (event) => {
-  event.stopPropagation();
-  remoteControls.classList.toggle('open');
-});
-
-// Fecha o drawer e o painel de espectadores ao clicar fora deles
+// Fecha os painéis de espectadores e qualidade ao clicar fora deles
 document.addEventListener('click', (event) => {
-  if (remoteControls.classList.contains('open') && !remoteControls.contains(event.target)) {
-    remoteControls.classList.remove('open');
-  }
   if (!viewersPanel.classList.contains('hidden') && !viewersPanel.contains(event.target) && event.target !== viewersBtn) {
     viewersPanel.classList.add('hidden');
   }
   if (!qualityPanel.classList.contains('hidden') && !qualityPanel.contains(event.target) && event.target !== qualityBtn) {
     qualityPanel.classList.add('hidden');
     qualityBtn.setAttribute('aria-expanded', 'false');
+  }
+  if (volumeControl.classList.contains('slider-open') && !volumeControl.contains(event.target)) {
+    volumeControl.classList.remove('slider-open');
   }
 });

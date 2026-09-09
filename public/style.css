@@ -102,43 +102,60 @@ video:fullscreen {
   margin-top: 8px;
 }
 
-.drawer-toggle {
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  margin: 0;
-  font-size: 18px;
-  border-radius: 8px 0 0 8px;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
-  border: none;
-  cursor: pointer;
+.close-btn,
+.fullscreen-btn,
+.quality-btn,
+.viewers-btn,
+body.watching .volume-control {
+  transition: opacity 0.3s ease;
 }
 
-.drawer-toggle:hover {
-  background: rgba(0, 0, 0, 0.75);
-}
-
-.drawer-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  background: rgba(0, 0, 0, 0.55);
-  border-radius: 8px 0 0 8px;
-  overflow: hidden;
-  max-width: 0;
+body.controls-hidden .close-btn,
+body.controls-hidden .fullscreen-btn,
+body.controls-hidden .quality-btn,
+body.controls-hidden .viewers-btn,
+body.controls-hidden .volume-control,
+body.controls-hidden .quality-panel,
+body.controls-hidden .viewers-panel {
   opacity: 0;
-  transition: max-width 0.2s ease, opacity 0.2s ease, padding 0.2s ease;
+  pointer-events: none;
 }
 
-.remote-controls.open .drawer-panel {
-  max-width: 220px;
-  opacity: 1;
+body.controls-hidden #remoteVideo {
+  cursor: none;
 }
 
-.remote-controls .drawer-panel button {
-  white-space: nowrap;
+.close-btn {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 9999px;
+  z-index: 900;
+}
+
+.fullscreen-btn {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  border-radius: 9999px;
+  z-index: 900;
+  display: none;
+}
+
+body.watching .fullscreen-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .volume-control {
@@ -152,15 +169,15 @@ video:fullscreen {
 }
 
 .volume-icon {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   margin: 0;
   font-size: 16px;
   line-height: 1;
   background: transparent;
   border: none;
-  color: #fff;
+  color: hsl(var(--foreground));
   cursor: pointer;
 }
 
@@ -199,13 +216,15 @@ body.modal-open {
 body:not(.watching) #viewersBtn,
 body:not(.watching) #viewersPanel,
 body:not(.watching) #qualityBtn,
-body:not(.watching) #qualityPanel {
-  display: none;
+body:not(.watching) #qualityPanel,
+body:not(.watching) .close-btn,
+body:not(.watching) #volumeControl {
+  display: none !important;
 }
 
 .quality-btn {
   position: fixed;
-  right: 92px;
+  right: 125px;
   bottom: 16px;
   width: 36px;
   height: 36px;
@@ -216,7 +235,9 @@ body:not(.watching) #qualityPanel {
 
 .viewers-btn {
   position: fixed;
-  right: 16px;
+  right: 64px;
+  width: 56px;
+  height: 36px;
   bottom: 16px;
   border-radius: 9999px;
   z-index: 900;
@@ -224,7 +245,7 @@ body:not(.watching) #qualityPanel {
 
 .quality-panel {
   position: fixed;
-  right: 102px;
+  right: 20px;
   bottom: 68px;
   width: 220px;
   padding: 12px 16px;
@@ -247,7 +268,7 @@ body:not(.watching) #qualityPanel {
 
 .viewers-panel {
   position: fixed;
-  right: 16px;
+  right: 4px;
   bottom: 68px;
   width: 220px;
   max-height: 300px;
@@ -324,15 +345,30 @@ body.watching #remoteVideo {
 }
 
 body.watching .remote-controls {
-  position: fixed;
-  top: 50%;
-  right: 0;
-  transform: translateY(-50%);
   margin: 0;
-  z-index: 10;
-  display: flex;
-  flex-direction: row-reverse;
-  align-items: center;
+}
+
+body.watching .volume-control {
+  position: fixed;
+  right: 168px;
+  bottom: 16px;
+  z-index: 900;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--input));
+  border-radius: 9999px;
+  padding: 0 4px 0 0;
+}
+
+body.watching .volume-control #volumeSlider {
+  display: none;
+}
+
+body.watching .volume-control.slider-open #volumeSlider {
+  display: block;
+}
+
+body.watching .volume-icon {
+  color: hsl(var(--foreground));
 }
 
 /* Lobby de transmissões */
@@ -378,8 +414,8 @@ body.watching .remote-controls {
 
 .broadcast-list {
   width: min(620px, 100%);
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   margin-top: 16px;
 }
@@ -479,11 +515,17 @@ body.watching .remote-controls {
   display: flex;
   flex: 0 1 auto;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
   font-size: 11px;
   text-transform: uppercase;
   white-space: nowrap;
+  color: hsl(var(--muted-foreground));
+}
+
+.broadcaster-viewers {
+  font-size: 13px;
+  text-transform: none;
   color: hsl(var(--muted-foreground));
 }
 

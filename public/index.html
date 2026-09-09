@@ -74,24 +74,21 @@
         <p class="preview-label">Você está transmitindo</p>
       </div>
       <div class="video-box hidden" id="remoteBox">
-        <video id="remoteVideo" autoplay playsinline muted></video>
+        <video id="remoteVideo" autoplay playsinline></video>
         <div class="remote-controls" id="remoteControls">
-          <button id="drawerToggle" class="drawer-toggle" aria-label="Abrir controles">☰</button>
-          <div class="drawer-panel" id="drawerPanel">
-            <button id="backToListBtn" class="btn-outline">Transmissões</button>
-            <button id="fullscreenBtn" class="btn-outline">Tela cheia</button>
-            <div class="volume-control hidden" id="volumeControl">
-              <button type="button" id="volumeIcon" class="volume-icon" aria-label="Mutar/desmutar">🔊</button>
-              <input type="range" id="volumeSlider" min="0" max="100" value="0" />
-            </div>
+          <button id="backToListBtn" class="close-btn btn-outline" aria-label="Voltar às transmissões">✕</button>
+          <div class="volume-control hidden" id="volumeControl">
+            <button type="button" id="volumeIcon" class="volume-icon" aria-label="Mutar/desmutar">🔊</button>
+            <input type="range" id="volumeSlider" min="0" max="100" value="100" />
           </div>
         </div>
       </div>
+      <button id="fullscreenBtn" class="fullscreen-btn btn-outline" aria-label="Tela cheia">⛶</button>
     </section>
 
     <section class="command-bar" aria-label="Controles da transmissão">
       <div class="command">
-        <span>Parar transmissão</span>
+        <span id="broadcasterViewers" class="broadcaster-viewers hidden"></span>
         <button id="stopBtn" disabled class="btn-destructive" aria-label="Parar transmissão">Parar compartilhamento</button>
       </div>
     </section>
@@ -106,7 +103,6 @@
   </main>
 
   <div class="viewers-popover">
-    <button id="qualityBtn" class="quality-btn btn-outline" aria-label="Configurar qualidade" aria-expanded="false">⚙️</button>
     <div id="qualityPanel" class="quality-panel card hidden">
       <label class="quality-control" for="viewerQualitySelect">
         Qualidade
@@ -117,6 +113,7 @@
         </select>
       </label>
     </div>
+    <button id="qualityBtn" class="quality-btn btn-outline" aria-label="Configurar qualidade" aria-expanded="false">⚙️</button>
     <button id="viewersBtn" class="viewers-btn btn-outline" aria-label="Ver quem está assistindo">
       👥 <span id="viewersCount">0</span>
     </button>
