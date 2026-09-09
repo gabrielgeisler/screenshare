@@ -738,6 +738,28 @@ volumeSlider.addEventListener('input', () => {
 // Guarda o último volume não-zero para restaurar ao desmutar pelo ícone
 let lastVolume = Number(volumeSlider.value) || 50;
 
+// Roda do mouse sobre o vídeo remoto ajusta o volume sem precisar clicar no slider
+let volumeWheelHideTimeout = null;
+remoteVideo.addEventListener('wheel', (event) => {
+  if (!selectedBroadcasterId) return;
+  event.preventDefault();
+
+  const passo = 5;
+  const atual = Number(volumeSlider.value);
+  const novo = Math.min(100, Math.max(0, atual + (event.deltaY < 0 ? passo : -passo)));
+  volumeSlider.value = novo;
+  remoteVideo.muted = novo === 0;
+  remoteVideo.volume = novo / 100;
+  volumeIcon.textContent = novo === 0 ? '🔇' : '🔊';
+  remoteVideo.play().catch((err) => console.warn('Falha ao ativar o som:', err));
+
+  // Mostra o slider brevemente como feedback visual e some de novo em seguida
+  volumeControl.classList.remove('hidden');
+  volumeControl.classList.add('slider-open');
+  window.clearTimeout(volumeWheelHideTimeout);
+  volumeWheelHideTimeout = window.setTimeout(() => volumeControl.classList.remove('slider-open'), 1200);
+}, { passive: false });
+
 volumeIcon.addEventListener('click', (event) => {
   event.stopPropagation();
   // O clique no ícone apenas abre/fecha o slider; mutar/desmutar é feito pelo
