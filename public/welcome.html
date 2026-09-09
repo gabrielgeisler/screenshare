@@ -89,9 +89,14 @@
       const form = document.getElementById('nameForm');
       const input = document.getElementById('nameInput');
 
+      function destinoSeguro() {
+        const destino = new URLSearchParams(window.location.search).get('redirect') || '/';
+        return destino.startsWith('/') && !destino.startsWith('//') ? destino : '/';
+      }
+
       const nomeSalvo = localStorage.getItem(NAME_STORAGE_KEY);
       if (nomeSalvo) {
-        window.location.replace('/');
+        window.location.replace(destinoSeguro());
       }
 
       form.addEventListener('submit', (event) => {
@@ -100,7 +105,7 @@
         if (!nome) return;
 
         localStorage.setItem(NAME_STORAGE_KEY, nome);
-        window.location.replace('/');
+        window.location.replace(destinoSeguro());
       });
 
       const matrixCanvas = document.getElementById('matrixCanvas');

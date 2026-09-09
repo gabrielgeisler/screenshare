@@ -11,7 +11,8 @@ const io = new Server(server);
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
-const DISCORD_START_MESSAGE_TEMPLATE = process.env.DISCORD_START_MESSAGE || '🔴 🎥{nome} inicou uma transmissão! - https://screenshare.gariel.cloud/';
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || 'https://screenshare.gariel.cloud').replace(/\/$/, '');
+const DISCORD_START_MESSAGE_TEMPLATE = process.env.DISCORD_START_MESSAGE || '🔴 🎥{nome} inicou uma transmissão! - {link}';
 const DISCORD_NOTIFY_ENABLED = Boolean(DISCORD_BOT_TOKEN && DISCORD_CHANNEL_ID);
 
 if (!DISCORD_NOTIFY_ENABLED) {
@@ -125,16 +126,17 @@ function tocarSomEfeito(soundEffectId) {
 
 const discordBroadcastMessageIds = new Map();
 
-function montarMensagemInicioDiscord(nomeBroadcaster) {
+function montarMensagemInicioDiscord(nomeBroadcaster, slug) {
   const nome = String(nomeBroadcaster || 'Anônimo');
-  return DISCORD_START_MESSAGE_TEMPLATE.replace('{nome}', nome);
+  const link = `${PUBLIC_BASE_URL}/${slug}`;
+  return DISCORD_START_MESSAGE_TEMPLATE.replace('{nome}', nome).replace('{link}', link);
 }
 
-async function enviarAvisoInicioDiscord(broadcasterId, nomeBroadcaster) {
+async function enviarAvisoInicioDiscord(broadcasterId, nomeBroadcaster, slug) {
   if (!DISCORD_NOTIFY_ENABLED || discordBroadcastMessageIds.has(broadcasterId)) return;
   try {
     const message = await discordRequest('POST', `/channels/${DISCORD_CHANNEL_ID}/messages`, {
-      content: montarMensagemInicioDiscord(nomeBroadcaster),
+      content: montarMensagemInicioDiscord(nomeBroadcaster, slug),
     });
     if (message?.id) discordBroadcastMessageIds.set(broadcasterId, message.id);
   } catch (err) {
@@ -185,12 +187,31 @@ app.get('/ice-servers', (req, res) => {
   res.json({ iceServers });
 });
 
+// URLs de transmissão são atendidas pela mesma aplicação; o cliente resolve o slug
+// para a transmissão ativa após conectar ao Socket.IO.
+app.get('/:slug', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // Cada transmissão é vinculada ao socket de quem a iniciou.
 const broadcasters = new Map();
 
 // Nome de cada conectado, usado para exibir quem está assistindo a transmissão
 const nomesConectados = new Map();
 const espectadoresPorSocket = new Map();
+
+function criarSlug(nome, socketId) {
+  const base = String(nome || 'anonimo')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 30) || 'anonimo';
+  const slugEmUso = new Set(Array.from(broadcasters.values(), (transmissao) => transmissao.slug));
+  if (!slugEmUso.has(base)) return base;
+  return `${base}-${socketId.slice(0, 6).toLowerCase()}`;
+}
 
 function listaDeEspectadores(broadcasterId) {
   return Array.from(espectadoresPorSocket.entries())
@@ -234,15 +255,17 @@ io.on('connection', (socket) => {
   });
 
   // Quem inicia o compartilhamento entra na lista de broadcasters.
-  socket.on('broadcaster', () => {
+  socket.on('broadcaster', (callback) => {
     const nomeBroadcaster = nomesConectados.get(socket.id) || 'Anônimo';
+    const slug = criarSlug(nomeBroadcaster, socket.id);
     espectadoresPorSocket.delete(socket.id);
-    broadcasters.set(socket.id, { nome: nomeBroadcaster, thumbnail: null });
+    broadcasters.set(socket.id, { nome: nomeBroadcaster, slug, thumbnail: null });
     notificarTransmissoes();
     notificarEspectadores();
 
-    enviarAvisoInicioDiscord(socket.id, nomeBroadcaster);
+    enviarAvisoInicioDiscord(socket.id, nomeBroadcaster, slug);
     tocarSomEfeito(SOUND_EFFECT_START_ID);
+    if (typeof callback === 'function') callback({ slug });
   });
 
   // A miniatura é um frame JPEG reduzido, enviado uma vez pelo emissor ao iniciar.

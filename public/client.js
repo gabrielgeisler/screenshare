@@ -21,6 +21,9 @@ const qualityPanel = document.getElementById('qualityPanel');
 const viewersList = document.getElementById('viewersList');
 const broadcastList = document.getElementById('broadcastList');
 const backToListBtn = document.getElementById('backToListBtn');
+const broadcastLink = document.getElementById('broadcastLink');
+const broadcastLinkAnchor = document.getElementById('broadcastLinkAnchor');
+const copyBroadcastLinkBtn = document.getElementById('copyBroadcastLinkBtn');
 const themeToggle = document.getElementById('themeToggle');
 const themeIcon = document.getElementById('themeIcon');
 const matrixCanvas = document.getElementById('matrixCanvas');
@@ -93,6 +96,8 @@ let activeBroadcasts = [];
 let thumbnailTimeout = null;
 // Candidates ICE que chegam antes da remoteDescription estar pronta ficam aqui até poderem ser aplicados
 const pendingCandidates = {};
+const broadcastSlugFromUrl = window.location.pathname.split('/').filter(Boolean)[0] || null;
+let deveEntrarNaTransmissaoDaUrl = Boolean(broadcastSlugFromUrl);
 
 // Prioriza H.264 na negociação: é o único codec com decodificação por hardware praticamente
 // universal, enquanto VP9/AV1 (escolhidos por padrão em alguns navegadores) caem para decodificação
@@ -207,7 +212,8 @@ const nomeSalvo = localStorage.getItem(NAME_STORAGE_KEY);
 if (nomeSalvo) {
   socket.emit('identify', nomeSalvo);
 } else {
-  window.location.replace('/welcome.html');
+  const destino = `${window.location.pathname}${window.location.search}`;
+  window.location.replace(`/welcome.html?redirect=${encodeURIComponent(destino)}`);
 }
 
 // ---------- Lista de quem está assistindo ----------
@@ -276,7 +282,9 @@ function renderBroadcasts() {
     const action = document.createElement('span');
     action.textContent = 'Assistir transmissão';
     button.append(preview, name, viewers, action);
-    button.addEventListener('click', () => selectBroadcast(broadcast.id, broadcast.nome));
+    button.addEventListener('click', () => {
+      window.location.assign(`/${encodeURIComponent(broadcast.slug)}`);
+    });
     broadcastList.appendChild(button);
   });
 
@@ -303,7 +311,16 @@ function selectBroadcast(broadcasterId, broadcasterName) {
   socket.emit('watcher', broadcasterId);
 }
 
+function mostrarLinkDaTransmissao(slug) {
+  const link = `${window.location.origin}/${slug}`;
+  broadcastLinkAnchor.href = link;
+  broadcastLinkAnchor.textContent = link;
+  broadcastLink.classList.remove('hidden');
+}
+
 function returnToBroadcasts() {
+  deveEntrarNaTransmissaoDaUrl = false;
+  window.history.replaceState(null, '', '/');
   ofertaSeq += 1;
   if (watcherConnection) {
     watcherConnection.close();
@@ -330,6 +347,11 @@ socket.on('broadcasts-list', (broadcasts) => {
   activeBroadcasts = Array.isArray(broadcasts) ? broadcasts : [];
   atualizarListaEspectadores();
   renderBroadcasts();
+
+  if (deveEntrarNaTransmissaoDaUrl && !selectedBroadcasterId && !localStream) {
+    const transmissao = activeBroadcasts.find((broadcast) => broadcast.slug === broadcastSlugFromUrl);
+    if (transmissao) selectBroadcast(transmissao.id, transmissao.nome);
+  }
 });
 
 function enviarMiniatura() {
@@ -391,7 +413,7 @@ shareBtn.addEventListener('click', async () => {
     // Para automaticamente se o usuário parar pela barra do navegador
     videoTrack?.addEventListener('ended', stopSharing);
 
-    socket.emit('broadcaster');
+    socket.emit('broadcaster', ({ slug }) => mostrarLinkDaTransmissao(slug));
     selectedBroadcasterId = null;
     shareBtn.disabled = true;
     stopBtn.disabled = false;
@@ -447,6 +469,7 @@ function stopSharing() {
   localStream.getTracks().forEach((track) => track.stop());
   localStream = null;
   localVideo.srcObject = null;
+  broadcastLink.classList.add('hidden');
 
   Object.values(peerConnections).forEach((pc) => pc.close());
   for (const id in peerConnections) {
@@ -776,6 +799,18 @@ fullscreenBtn.addEventListener('click', () => {
 });
 
 backToListBtn.addEventListener('click', returnToBroadcasts);
+
+copyBroadcastLinkBtn.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(broadcastLinkAnchor.href);
+    copyBroadcastLinkBtn.textContent = 'Link copiado';
+    window.setTimeout(() => {
+      copyBroadcastLinkBtn.textContent = 'Copiar link';
+    }, 2000);
+  } catch (err) {
+    console.warn('Não foi possível copiar o link:', err);
+  }
+});
 
 // Como o vídeo some da tela normal quando é ele o elemento em fullscreen, usamos os
 // controles nativos do navegador (volume, sair da tela cheia) enquanto estiver nesse modo
