@@ -416,7 +416,9 @@ shareBtn.addEventListener('click', async () => {
     socket.emit('broadcaster', ({ slug }) => mostrarLinkDaTransmissao(slug));
     selectedBroadcasterId = null;
     shareBtn.disabled = true;
+    shareBtn.classList.add('hidden');
     stopBtn.disabled = false;
+    stopBtn.classList.remove('hidden');
     localBox.classList.remove('hidden');
     remoteBox.classList.add('hidden');
     capturarMiniaturaInicial();
@@ -481,7 +483,9 @@ function stopSharing() {
   socket.emit('stop-broadcast');
 
   shareBtn.disabled = false;
+  shareBtn.classList.remove('hidden');
   stopBtn.disabled = true;
+  stopBtn.classList.add('hidden');
   localBox.classList.add('hidden');
   renderBroadcasts();
   statusEl.textContent = 'Compartilhamento encerrado.';

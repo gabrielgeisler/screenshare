@@ -89,7 +89,11 @@
     <section class="command-bar" aria-label="Controles da transmissão">
       <div class="command">
         <span id="broadcasterViewers" class="broadcaster-viewers hidden"></span>
-        <button id="stopBtn" disabled class="btn-destructive" aria-label="Parar transmissão">Parar compartilhamento</button>
+        <div id="broadcastLink" class="broadcast-link hidden">
+          <a id="broadcastLinkAnchor" class="hidden" target="_blank" rel="noopener"></a>
+          <button id="copyBroadcastLinkBtn" class="btn-outline" type="button">Copiar link</button>
+        </div>
+        <button id="stopBtn" disabled class="btn-destructive hidden" aria-label="Parar transmissão">Parar compartilhamento</button>
       </div>
     </section>
 

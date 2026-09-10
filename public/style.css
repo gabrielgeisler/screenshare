@@ -70,6 +70,7 @@ body > *:not(#matrixCanvas) {
 
 header {
   justify-content: center !important;
+  margin-top: 48px;
 }
 
 #themeToggle {
