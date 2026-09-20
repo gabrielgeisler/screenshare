@@ -160,7 +160,12 @@ app.get('/icon.svg', (req, res) => {
   res.sendFile(path.join(__dirname, 'icon.svg'));
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// no-cache (não "no-store") força o navegador a sempre revalidar via ETag antes de usar o
+// cache local; sem isso, um F5 normal pode servir um client.js desatualizado do cache heurístico
+// do próprio navegador, sem sequer contatar o servidor (só Ctrl+F5 ignorava esse cache antes)
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+}));
 
 // Loga uma vez na subida se o TURN está configurado, pra não precisar adivinhar depois
 if (process.env.TURN_URL) {

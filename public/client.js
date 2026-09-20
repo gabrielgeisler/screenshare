@@ -162,6 +162,26 @@ async function diagnosticarCandidatoEscolhido(pc, rotulo) {
   }
 }
 
+// Fica de olho no motivo pelo qual o encoder está limitando a qualidade (cpu/bandwidth/other),
+// já que isso não aparece em lugar nenhum da UI e ajuda a confirmar se a causa é mesmo a CPU
+function monitorarLimitacaoDeQualidade(pc, rotulo) {
+  const intervalo = window.setInterval(async () => {
+    if (pc.connectionState === 'closed') {
+      window.clearInterval(intervalo);
+      return;
+    }
+    const stats = await pc.getStats();
+    stats.forEach((report) => {
+      if (report.type === 'outbound-rtp' && report.kind === 'video' && report.qualityLimitationReason && report.qualityLimitationReason !== 'none') {
+        console.warn(`[qualidade][${rotulo}] Limitada por: ${report.qualityLimitationReason} (resolução ${report.frameWidth}x${report.frameHeight}@${report.framesPerSecond})`);
+      }
+    });
+  }, 5000);
+  pc.addEventListener('connectionstatechange', () => {
+    if (pc.connectionState === 'closed') window.clearInterval(intervalo);
+  });
+}
+
 function adicionarOuEnfileirarCandidate(id, pc, candidate) {
   if (pc && pc.remoteDescription && pc.remoteDescription.type) {
     pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((err) => console.warn('Erro ao adicionar candidate:', err));
@@ -514,6 +534,7 @@ socket.on('watcher', async (watcherId) => {
 
   const pc = new RTCPeerConnection(rtcConfig);
   peerConnections[watcherId] = pc;
+  monitorarLimitacaoDeQualidade(pc, `broadcaster→${watcherId}`);
 
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
   preferirCodec(pc, 'video/H264');
@@ -529,7 +550,9 @@ socket.on('watcher', async (watcherId) => {
         params.encodings[0].maxBitrate = QUALITY_PRESETS.high.maxBitrate;
         params.encodings[0].scaleResolutionDownBy = QUALITY_PRESETS.high.scaleResolutionDownBy;
         params.encodings[0].maxFramerate = QUALITY_PRESETS.high.maxFramerate;
-        params.degradationPreference = 'balanced';
+        // 'maintain-resolution' impede o quality scaler de reduzir a nitidez sob CPU/banda;
+        // a adaptação recai sobre o framerate em vez de embaçar a imagem (e não volta sozinho depois)
+        params.degradationPreference = 'maintain-resolution';
         sender.setParameters(params).catch((err) => console.warn('Erro ao definir parâmetros do sender:', err));
       } catch (err) {
         console.warn('Não foi possível configurar parâmetros de codificação:', err);
@@ -583,6 +606,7 @@ function aplicarQualidadeNoSender(sender, preset) {
   params.encodings[0].maxBitrate = preset.maxBitrate;
   params.encodings[0].scaleResolutionDownBy = preset.scaleResolutionDownBy;
   params.encodings[0].maxFramerate = preset.maxFramerate;
+  params.degradationPreference = 'maintain-resolution';
   return sender.setParameters(params);
 }
 
