@@ -419,6 +419,13 @@ shareBtn.addEventListener('click', async () => {
     });
     localVideo.srcObject = localStream;
 
+    // Diagnóstico: ajuda a comparar entre máquinas por que o áudio às vezes vem "limpo"
+    // (sem o Discord) e às vezes vem com o sistema inteiro, dependendo do Chromium/Windows
+    console.log('[audio-diag] userAgent:', navigator.userAgent);
+    console.log('[audio-diag] video settings:', localStream.getVideoTracks()[0]?.getSettings());
+    console.log('[audio-diag] audio track presente:', localStream.getAudioTracks().length > 0);
+    console.log('[audio-diag] audio settings:', localStream.getAudioTracks()[0]?.getSettings());
+
     // O foco principal desta ferramenta é transmitir vídeos, então manter o movimento fluido
     // é mais importante que preservar a resolução durante uma oscilação de rede.
     const videoTrack = localStream.getVideoTracks()[0];
